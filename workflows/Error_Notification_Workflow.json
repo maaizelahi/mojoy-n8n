@@ -1,0 +1,100 @@
+{
+  "name": "Error Notification Workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "error-trigger-node",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const errorData = $json.error;\nconst executionData = $json.execution;\nlet orderId = 'N/A';\nlet workflowName = (executionData && executionData.workflow && executionData.workflow.name) ? executionData.workflow.name : 'N/A';\n\n// Attempt to find orderId in the error context\n// This part might need adjustment based on how data flows in your main workflow\n// and what's available in the inputData of the failed node.\nif (executionData && executionData.lastNodeExecuted && executionData.lastNodeExecuted.inputData && executionData.lastNodeExecuted.inputData.json) {\n  const inputJson = executionData.lastNodeExecuted.inputData.json;\n  // Check common places where an order ID might be found\n  orderId = inputJson.orderId || \n            (inputJson.orderData ? inputJson.orderData.id : null) || \n            inputJson.id || // If the webhook data itself failed early\n            (inputJson.json ? (inputJson.json.orderId || (inputJson.json.orderData ? inputJson.json.orderData.id : null)) : null) ||\n            'N/A';\n}\n\nconst subject = `n8n Workflow Error: ${workflowName}`;\nconst body = `\nAn error occurred in the n8n workflow: ${workflowName}\n\nWorkflow ID: ${executionData.workflow.id}\nExecution ID: ${executionData.id}\nFailed Node: ${errorData.node.name} (Type: ${errorData.node.type})\nError Message: ${errorData.message}\n\nOrder ID (if found): ${orderId}\n\nError Stack (if available):\n${errorData.stack || 'Not available'}\n\nTimestamp: ${new Date().toISOString()}\n`;\n\n$json.emailSubject = subject;\n$json.emailBody = body;\n$json.errorDetails = errorData; // Pass along for further inspection if needed\n\nreturn $json;"
+      },
+      "id": "format-error-message",
+      "name": "Format Error Message",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "host": "YOUR_SMTP_HOST",
+        "port": 587,
+        "user": "YOUR_SMTP_USERNAME",
+        "password": "YOUR_SMTP_PASSWORD_OR_APP_KEY",
+        "sender": "n8n-errors@yourdomain.com",
+        "to": "your-alert-email@yourdomain.com",
+        "subject": "={{ $json.emailSubject }}",
+        "html": "={{ \"<pre>\" + $json.emailBody + \"</pre>\" }}",
+        "options": {
+          "secure": false
+        }
+      },
+      "id": "send-email-notification",
+      "name": "Send Email Notification (NEEDS CONFIGURATION)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        750,
+        300
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "YOUR_N8N_SMTP_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "SMTP Credentials Placeholder (configure in n8n)"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Format Error Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error Message": {
+      "main": [
+        [
+          {
+            "node": "Send Email Notification (NEEDS CONFIGURATION)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "createdAt": "2023-10-27T10:00:00.000Z",
+      "updatedAt": "2023-10-27T10:00:00.000Z",
+      "id": "placeholder-tag-id-1",
+      "name": "error-handling"
+    }
+  ],
+  "versionId": "placeholder-version-id",
+  "id": "placeholder-workflow-id"
+}
