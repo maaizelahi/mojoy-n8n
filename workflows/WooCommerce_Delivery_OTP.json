@@ -5,13 +5,15 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "woo-out-for-delivery",
-        "options": {}
+        "options": {
+          "rawBody": true
+        }
       },
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
       "position": [
-        -400,
+        -600,
         60
       ],
       "id": "5cced7b9-e726-46c5-a55e-a9777472e6c2",
@@ -19,14 +21,48 @@
     },
     {
       "parameters": {
-        "jsCode": "// Generate a 6-digit OTP\nconst otp = Math.floor(100000 + Math.random() * 900000);\n\n// Access the first input item\nconst data = $input.first().json.body;\n\n// Safely extract billing and shipping information\nconst billing = data.billing || {};\nconst shipping = data.shipping || {};\n\n// Construct the formatted address\nconst addressParts = [\n  shipping.address_1,\n  shipping.city,\n  shipping.state,\n  shipping.postcode\n].filter(part => part).join(', ');\n\n// Format data for the next node\nreturn {\n  json: {\n    orderId: data.order_id || null,\n    customerName: `${billing.first_name || ''} ${billing.last_name || ''}`.trim(),\n    phone: (billing.phone || '').replace(/\\D/g, '').replace(/^0+|^91+/, ''),\n    email: billing.email || '',\n    otp: otp.toString(),\n    status: data.status || 'Out for Delivery',\n    timestamp: new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }),\n    address: addressParts,\n    // items: data.items || []\n  }\n};\n"
+        "jsCode": "const body = $input.first().json.body;\n// Attempt to parse if body is a string\nlet data;\ntry {\n  data = typeof body === 'string' ? JSON.parse(body) : body;\n} catch (error) {\n  console.error(\"Error parsing webhook body:\", error);\n  // Return an error structure that can be handled by a Respond node\n  return { json: { error: true, message: \"Invalid JSON payload in webhook body.\" }, status: 400 };\n}\n\nconst errors = [];\nif (!data.order_id) errors.push(\"Missing order_id\");\nif (!data.billing) errors.push(\"Missing billing information\");\nif (data.billing && !data.billing.phone) errors.push(\"Missing billing.phone\");\nif (data.billing && !data.billing.email) errors.push(\"Missing billing.email\");\n// First name and last name are good to have for personalization but might not be strictly essential for OTP\n// if (!data.billing.first_name) errors.push(\"Missing billing.first_name\");\n// if (!data.billing.last_name) errors.push(\"Missing billing.last_name\");\n\nif (errors.length > 0) {\n  console.error(\"Input validation failed:\", errors.join(', '));\n  return { json: { error: true, message: \"Input validation failed: \" + errors.join(', '), details: errors }, status: 400 };\n}\n\nreturn { json: data }; // Pass validated data to the next node\n"
       },
-      "name": "Generate OTP",
+      "name": "Validate Webhook Data",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
       "position": [
-        -200,
+        -380,
         60
+      ],
+      "id": "VALIDATE_WEBHOOK_DATA_NODE_ID"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.error}}",
+              "operation": "isEmpty"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If Valid Data",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -180,
+        60
+      ],
+      "id": "IF_VALID_DATA_NODE_ID"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate a 6-digit OTP\nconst otp = Math.floor(100000 + Math.random() * 900000);\n\n// Access the first input item (validated data from previous node)\nconst data = $input.first().json;\n\n// Safely extract billing and shipping information\nconst billing = data.billing || {}; // Already validated that billing exists\nconst shipping = data.shipping || {};\n\n// Construct the formatted address\nconst addressParts = [\n  shipping.address_1,\n  shipping.city,\n  shipping.state,\n  shipping.postcode\n].filter(part => part && typeof part === 'string' && part.trim() !== '').join(', ');\n\n// Customer name: handle if one part is missing\nlet customerName = '';\nif (billing.first_name && billing.last_name) {\n  customerName = `${billing.first_name} ${billing.last_name}`.trim();\n} else if (billing.first_name) {\n  customerName = billing.first_name.trim();\n} else if (billing.last_name) {\n  customerName = billing.last_name.trim();\n} else {\n  customerName = 'Valued Customer'; // Fallback name\n}\n\n// Phone number cleaning: ensure it's a string before replace\nconst rawPhone = billing.phone || '';\nconst cleanedPhone = rawPhone.toString().replace(/\\D/g, ''); // Remove non-digits\n// Specific logic for Indian numbers: remove leading 0 or 91 if it's a full 10-digit number after that\n// This regex might need adjustment based on actual phone number formats received.\n// For now, assuming we want to strip country code if present for local delivery systems.\nconst finalPhone = cleanedPhone.length > 10 && (cleanedPhone.startsWith('91') || cleanedPhone.startsWith('0')) ? cleanedPhone.replace(/^0+|^91+/, '') : cleanedPhone;\n\n\n// Format data for the next node\nreturn {\n  json: {\n    orderId: data.order_id,\n    customerName: customerName,\n    phone: finalPhone,\n    email: billing.email,\n    otp: otp.toString(),\n    status: data.status || 'Out for Delivery',\n    timestamp: new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }),\n    address: addressParts,\n    // items: data.items || [] // Consider if items are needed for SMS or Sheets\n  }\n};\n"
+      },
+      "name": "Generate OTP & Prepare Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        20,
+        -20
       ],
       "id": "ed6d6355-9497-41c2-bb5e-0ee7d0a4701d"
     },
@@ -34,33 +70,97 @@
       "parameters": {
         "authentication": "apiKey",
         "requestMethod": "POST",
-        "url": "https://api.msg91.com/api/v5/flow/",
-        "options": {}
+        "url": "={{ $secrets.MSG91_API_URL || 'https://api.msg91.com/api/v5/flow/' }}",
+        "jsonBody": "{\n    \"flow_id\": \"{{ $secrets.MSG91_FLOW_ID || 'YOUR_MSG91_FLOW_ID_HERE' }}\",\n    \"sender\": \"{{ $secrets.MSG91_SENDER_ID || 'SENDERID' }}\",\n    \"mobiles\": \"91{{$json.phone}}\",\n    \"VAR1\": \"{{$json.customerName}}\",\n    \"VAR2\": \"{{$json.otp}}\",\n    \"VAR3\": \"{{$json.orderId}}\"\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "authkey",
+              "value": "{{ $credentials.MSG91Api.apiKey }}"
+            }
+          ]
+        }
       },
       "name": "Send SMS via MSG91",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 1,
+      "typeVersion": 4.1,
       "position": [
-        0,
-        0
+        240,
+        -20
       ],
-      "id": "241d9c85-edc4-4b67-beab-f1fd52b70a45"
+      "id": "241d9c85-edc4-4b67-beab-f1fd52b70a45",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_MSG91_CREDENTIAL_ID",
+          "name": "MSG91ApiKeyAuth"
+        }
+      }
     },
     {
       "parameters": {
         "authentication": "oAuth2",
         "operation": "upsert",
-        "sheetId": "1UXjKutLclMItkfe7yxt16conqSH54NNDSXKxbHRgMr4",
+        "sheetId": "{{ $env.GOOGLE_SHEET_ID || '1UXjKutLclMItkfe7yxt16conqSH54NNDSXKxbHRgMr4' }}",
         "range": "A:I",
         "key": "orderId",
-        "options": {}
+        "dataMode": "defineBelow",
+        "fieldsUi": {
+          "fields": [
+            {
+              "columnName": "orderId",
+              "columnValue": "={{ $('Generate OTP & Prepare Data').item.json.orderId }}"
+            },
+            {
+              "columnName": "customerName",
+              "columnValue": "={{ $('Generate OTP & Prepare Data').item.json.customerName }}"
+            },
+            {
+              "columnName": "phone",
+              "columnValue": "={{ $('Generate OTP & Prepare Data').item.json.phone }}"
+            },
+            {
+              "columnName": "email",
+              "columnValue": "={{ $('Generate OTP & Prepare Data').item.json.email }}"
+            },
+            {
+              "columnName": "otp",
+              "columnValue": "={{ $('Generate OTP & Prepare Data').item.json.otp }}"
+            },
+            {
+              "columnName": "status",
+              "columnValue": "={{ $('Generate OTP & Prepare Data').item.json.status }}"
+            },
+            {
+              "columnName": "timestamp",
+              "columnValue": "={{ $('Generate OTP & Prepare Data').item.json.timestamp }}"
+            },
+            {
+              "columnName": "address",
+              "columnValue": "={{ $('Generate OTP & Prepare Data').item.json.address }}"
+            },
+            {
+              "columnName": "smsSentStatus",
+              "columnValue": "={{ $previousNode.json.body.type === 'success' ? 'Success' : 'Failed: ' + ($previousNode.json.body.message || 'Unknown error') }}"
+            }
+          ]
+        },
+        "options": {
+          "valueInputMode": "USER_ENTERED"
+        }
       },
-      "name": "Google Sheets",
+      "name": "Upsert to Google Sheets",
       "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 1,
+      "typeVersion": 4,
       "position": [
-        0,
-        160
+        480,
+        60
       ],
       "id": "72358c8c-6a06-45f3-9bff-838c44c92d3d",
       "credentials": {
@@ -69,6 +169,47 @@
           "name": "Google Sheets account"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "console.error(\"Failed to send SMS or bad response from MSG91:\", JSON.stringify($input.first().json));\n// You could add more sophisticated error handling here, like sending a notification\n// For now, just log it and pass data to Google Sheets for recording failure\nconst previousData = $('Generate OTP & Prepare Data').first().json;\nreturn {\n    json: {\n        ...previousData,\n        smsSentStatus: 'Failed: ' + ($input.first().json.body.message || JSON.stringify($input.first().json.body))\n    }\n};"
+      },
+      "name": "Handle MSG91 Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        240,
+        180
+      ],
+      "id": "HANDLE_MSG91_ERROR_NODE_ID"
+    },
+    {
+      "parameters": {
+        "jsCode": "console.error(\"Failed to upsert to Google Sheets:\", JSON.stringify($input.first().json));\n// Final error logging or notification node\nreturn { json: { error: true, message: \"Failed to update Google Sheets\", details: $input.first().json } };"
+      },
+      "name": "Handle Google Sheets Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        700,
+        60
+      ],
+      "id": "HANDLE_GSHEETS_ERROR_NODE_ID"
+    },
+    {
+      "parameters": {
+        "responseCode": "={{ $json.status || 200}}",
+        "data": "={{$json}}",
+        "options": {}
+      },
+      "name": "Respond Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -180,
+        260
+      ],
+      "id": "RESPOND_WEBHOOK_NODE_ID"
     }
   ],
   "pinData": {},
@@ -77,18 +218,88 @@
       "main": [
         [
           {
-            "node": "Generate OTP",
+            "node": "Validate Webhook Data",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Generate OTP": {
+    "Validate Webhook Data": {
       "main": [
         [
           {
-            "node": "Google Sheets",
+            "node": "If Valid Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Valid Data": {
+      "main": [
+        [
+          {
+            "node": "Generate OTP & Prepare Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate OTP & Prepare Data": {
+      "main": [
+        [
+          {
+            "node": "Send SMS via MSG91",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send SMS via MSG91": {
+      "main": [
+        [
+          {
+            "node": "Upsert to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        {
+          "node": "Handle MSG91 Error",
+          "type": "error",
+          "index": 0
+        }
+      ]
+    },
+    "Upsert to Google Sheets": {
+      "main": [
+        []
+      ],
+      "error": [
+        {
+          "node": "Handle Google Sheets Error",
+          "type": "error",
+          "index": 0
+        }
+      ]
+    },
+    "Handle MSG91 Error": {
+      "main": [
+         [
+          {
+            "node": "Upsert to Google Sheets",
             "type": "main",
             "index": 0
           }
@@ -96,7 +307,7 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1"
   },
