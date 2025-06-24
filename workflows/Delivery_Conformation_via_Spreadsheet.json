@@ -1,0 +1,533 @@
+{
+  "name": "Delivery Conformation via Spreadsheet",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "delivery-confirmation-sheet",
+        "options": {}
+      },
+      "id": "96fd9052-553e-488d-af1c-edcc603f9b0d",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -1320,
+        380
+      ],
+      "webhookId": "d4899d09-6863-47f9-bb20-314f140cd30a"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract data from the spreadsheet edit webhook payload\n// The format from Google Apps Script will be different from a direct form submission\nconst payload = $input.first().json;\n\n// Log the incoming data structure for debugging\nconsole.log(\"Incoming webhook payload:\", JSON.stringify(payload));\n\n// Extract the form response data\n// Assuming the Apps Script sends the row data in a structured format\nlet formData;\nif (payload.body) {\n  // If data is nested in body (common webhook structure)\n  formData = typeof payload.body === 'string' ? JSON.parse(payload.body) : payload.body;\n} else {\n  // If data is at the top level\n  formData = payload;\n}\n\n// Extract the required fields\n// Note: Field names should match exactly what's coming from the Google Form/Sheet\nconst orderId = formData.orderId || formData['Order ID'] || \"\";\nconst deliveryPersonName = formData.deliveryPersonName || formData['Delivery Person Name'] || \"\";\nconst otp = formData.otp || formData['OTP'] || \"\";\nconst deliveryStatus = formData.deliveryStatus || formData['Delivery Status'] || \"Delivered\";\nconst deliveryNotes = formData.deliveryNotes || formData['Delivery Notes'] || \"\";\n\n// Extract row information if available\nconst rowId = formData.rowId || formData.row || null;\nconst spreadsheetId = formData.spreadsheetId || null;\n\n// Validate required fields\nlet validInputs = Boolean(orderId && deliveryPersonName && otp);\nlet validationMessage = validInputs ? \"All required fields present\" : \"Missing required fields\";\n\n// Return the extracted and validated data\nreturn {\n  json: {\n    orderId: orderId.toString().trim(),\n    deliveryPersonName: deliveryPersonName.toString().trim(),\n    otp: otp.toString().trim(),\n    deliveryStatus,\n    deliveryNotes,\n    rowId,\n    spreadsheetId,\n    timestamp: new Date().toISOString(),\n    validInputs,\n    validationMessage\n  }\n};"
+      },
+      "id": "ec57750f-efdd-45ce-b6f0-c1288f6d5a49",
+      "name": "Extract Form Response Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -1100,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json[\"validInputs\"]}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "d0e09af8-a690-40b6-a5d4-6cc7c17b37a3",
+      "name": "Valid Inputs?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -880,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1UXjKutLclMItkfe7yxt16conqSH54NNDSXKxbHRgMr4",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1UXjKutLclMItkfe7yxt16conqSH54NNDSXKxbHRgMr4/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "orderId",
+              "lookupValue": "={{ $json.orderId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3fff7f6a-05ff-4a60-b882-2ed8f63b8b6a",
+      "name": "Google Sheets - Look Up Order",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [
+        -660,
+        280
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WouXmJ65J28IkkhO",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process the Google Sheets lookup results\nconst lookupResults = $input.first().json;\nconsole.log(\"Maaiz here:\", lookupResults);\nconst inputData = $input.first();\n\n// Check if any results were found\nif (!lookupResults) {\n  return {\n    json: {\n      success: false,\n      message: \"Order not found in the tracking system.\",\n      orderExists: false,\n      orderId: inputData.json.orderId\n    }\n  };\n}\n\n// Get the first matching order (assuming orderId is unique)\nconst orderData = lookupResults;\n\n// Extract the stored OTP and other order information\nconst storedOtp = orderData.otp ? orderData.otp.toString().trim() : null;\nconst providedOtp = inputData.json.otp;\nconst rowId = orderData.rowNumber || inputData.json.rowId;\n\n// Verify OTP\nconst otpMatches = storedOtp === providedOtp;\n\n// Pass along original input data for updates\nreturn {\n  json: {\n    ...orderData,\n    orderId: inputData.json.orderId,\n    deliveryPersonName: inputData.json.deliveryPersonName,\n    deliveryStatus: inputData.json.deliveryStatus,\n    deliveryNotes: inputData.json.deliveryNotes,\n    rowId,\n    providedOtp,\n    storedOtp,\n    otpMatches,\n    orderExists: true,\n    deliveryTime: new Date().toISOString()\n  }\n};"
+      },
+      "id": "164aa897-74bf-4269-bebd-6b4aa307abc7",
+      "name": "Process Lookup & Verify OTP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -440,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json[\"orderExists\"]}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "7e2b1e4f-0f80-4673-bbe5-d9985a3215ce",
+      "name": "Order Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -220,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json[\"otpMatches\"]}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "a845fabd-fb24-43b4-ad1b-b4c960ec110b",
+      "name": "OTP Matches?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        0,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1UXjKutLclMItkfe7yxt16conqSH54NNDSXKxbHRgMr4",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1UXjKutLclMItkfe7yxt16conqSH54NNDSXKxbHRgMr4/edit#gid=0"
+        },
+        "columnToMatchOn": "orderId",
+        "valueToMatchOn": "={{ $json.orderId }}",
+        "fieldsUi": {
+          "values": [
+            {
+              "column": "status",
+              "fieldValue": "={{ $('Extract Form Response Data').item.json.deliveryStatus }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "27371437-005e-4f42-9ad2-887c2a88b3ee",
+      "name": "Google Sheets - Update Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [
+        -1320,
+        -180
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WouXmJ65J28IkkhO",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1Wqoo6mylPVXO1yV0vgb3hVAdEfq6l9uLj_nZ0Q-1FNo",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1016877743,
+          "mode": "list",
+          "cachedResultName": "Form Responses 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Wqoo6mylPVXO1yV0vgb3hVAdEfq6l9uLj_nZ0Q-1FNo/edit#gid=1016877743"
+        },
+        "columnToMatchOn": "Order ID",
+        "valueToMatchOn": "={{ $json.orderId }}",
+        "fieldsUi": {
+          "values": [
+            {
+              "column": "Status Message",
+              "fieldValue": "={{$json.otpMatches ? \"OTP Verified\" : \"OTP Mismatch\"}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9d1bd16a-e9b2-4f47-b2a6-25c8a1ee9d7e",
+      "name": "Google Sheets - Update Form Response",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [
+        220,
+        80
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WouXmJ65J28IkkhO",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "order",
+        "operation": "update",
+        "orderId": "={{$json.orderId}}",
+        "updateFields": {
+          "status": "completed"
+        },
+        "billingUi": {},
+        "couponLinesUi": {},
+        "feeLinesUi": {},
+        "lineItemsUi": {},
+        "metadataUi": {},
+        "shippingUi": {},
+        "shippingLinesUi": {}
+      },
+      "id": "1370d7b2-c55e-4383-8018-bb276b231b8e",
+      "name": "WooCommerce - Update Order",
+      "type": "n8n-nodes-base.wooCommerce",
+      "typeVersion": 1,
+      "position": [
+        440,
+        80
+      ],
+      "credentials": {
+        "wooCommerceApi": {
+          "id": "EEm1POxfOqddFHn8",
+          "name": "WooCommerce account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create success response for delivery person\nreturn {\n  json: {\n    success: true,\n    message: \"Delivery confirmed successfully! The order has been marked as completed.\",\n    details: {\n      orderId: $('Extract Form Response Data').first().json.orderId,\n      deliveryPerson: $('Extract Form Response Data').first().json.deliveryPersonName,\n      timestamp: $('Extract Form Response Data').first().json.timestamp,\n      status: $('Extract Form Response Data').first().json.deliveryStatus\n    }\n  }\n};"
+      },
+      "id": "a19ec7cd-359f-4068-94ed-fd69349c4f97",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        660,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create OTP mismatch error response\nreturn {\n  json: {\n    success: false,\n    message: \"Delivery verification failed: OTP does not match. Please check and try again.\",\n    errorType: \"OTP_MISMATCH\",\n    orderId: $json.orderId\n  }\n};"
+      },
+      "id": "82661605-cd67-44b3-97a4-33e3f0c15917",
+      "name": "OTP Mismatch Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        660,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create order not found error response\nreturn {\n  json: {\n    success: false,\n    message: \"Order not found in the tracking system. Please check the Order ID and try again.\",\n    errorType: \"ORDER_NOT_FOUND\",\n    orderId: $json.orderId\n  }\n};"
+      },
+      "id": "f3544316-98b8-4f02-a4e5-d385547e0983",
+      "name": "Order Not Found Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        660,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create invalid input error response\nreturn {\n  json: {\n    success: false,\n    message: \"Invalid or missing input data. Please provide all required fields: orderId, deliveryPersonName, and OTP.\",\n    errorType: \"INVALID_INPUT\",\n    validationDetails: $json.validationMessage\n  }\n};"
+      },
+      "id": "718b8837-7a3a-4cd2-8fac-f281d13c3bad",
+      "name": "Invalid Input Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        660,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "50d02e50-97dc-46ea-87b7-51c5b80e706d",
+      "name": "Respond To Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        880,
+        380
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Form Response Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Form Response Data": {
+      "main": [
+        [
+          {
+            "node": "Valid Inputs?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Inputs?": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Look Up Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid Input Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Look Up Order": {
+      "main": [
+        [
+          {
+            "node": "Process Lookup & Verify OTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Lookup & Verify OTP": {
+      "main": [
+        [
+          {
+            "node": "Order Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Order Exists?": {
+      "main": [
+        [
+          {
+            "node": "OTP Matches?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Order Not Found Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OTP Matches?": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Update Form Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "OTP Mismatch Response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Sheets - Update Form Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Update Status": {
+      "main": [
+        []
+      ]
+    },
+    "WooCommerce - Update Order": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Response": {
+      "main": [
+        [
+          {
+            "node": "Respond To Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OTP Mismatch Response": {
+      "main": [
+        [
+          {
+            "node": "Respond To Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Order Not Found Response": {
+      "main": [
+        [
+          {
+            "node": "Respond To Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invalid Input Response": {
+      "main": [
+        [
+          {
+            "node": "Respond To Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Update Form Response": {
+      "main": [
+        [
+          {
+            "node": "WooCommerce - Update Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "fe19c447-9dbc-4baf-a039-167cb24faaa9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c53ecb28f99c03e7dbc63fc29f3e8196e81e00736c6bd6560a4787342ab9857f"
+  },
+  "id": "jIZtNEoaF1SUSbuZ",
+  "tags": [
+    {
+      "createdAt": "2025-05-05T11:20:28.191Z",
+      "updatedAt": "2025-05-05T11:20:28.191Z",
+      "id": "1w0JXJvToXsyNaPe",
+      "name": "Mojoy"
+    },
+    {
+      "createdAt": "2025-05-05T12:44:10.767Z",
+      "updatedAt": "2025-05-05T12:44:10.767Z",
+      "id": "7r0excKJtvIhKNB5",
+      "name": "delivery"
+    },
+    {
+      "createdAt": "2025-05-05T12:44:10.783Z",
+      "updatedAt": "2025-05-05T12:44:10.783Z",
+      "id": "8RQJptTv7BS9sUFE",
+      "name": "woocommerce"
+    }
+  ]
+}

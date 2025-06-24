@@ -1,0 +1,110 @@
+{
+  "name": "WooCommerce Delivery OTP",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "woo-out-for-delivery",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        60
+      ],
+      "id": "5cced7b9-e726-46c5-a55e-a9777472e6c2",
+      "webhookId": "d59ac2bb-9f1d-486d-a43e-56a3388b6e71"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate a 6-digit OTP\nconst otp = Math.floor(100000 + Math.random() * 900000);\n\n// Access the first input item\nconst data = $input.first().json.body;\n\n// Safely extract billing and shipping information\nconst billing = data.billing || {};\nconst shipping = data.shipping || {};\n\n// Construct the formatted address\nconst addressParts = [\n  shipping.address_1,\n  shipping.city,\n  shipping.state,\n  shipping.postcode\n].filter(part => part).join(', ');\n\n// Format data for the next node\nreturn {\n  json: {\n    orderId: data.order_id || null,\n    customerName: `${billing.first_name || ''} ${billing.last_name || ''}`.trim(),\n    phone: (billing.phone || '').replace(/\\D/g, '').replace(/^0+|^91+/, ''),\n    email: billing.email || '',\n    otp: otp.toString(),\n    status: data.status || 'Out for Delivery',\n    timestamp: new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }),\n    address: addressParts,\n    // items: data.items || []\n  }\n};\n"
+      },
+      "name": "Generate OTP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        60
+      ],
+      "id": "ed6d6355-9497-41c2-bb5e-0ee7d0a4701d"
+    },
+    {
+      "parameters": {
+        "authentication": "apiKey",
+        "requestMethod": "POST",
+        "url": "https://api.msg91.com/api/v5/flow/",
+        "options": {}
+      },
+      "name": "Send SMS via MSG91",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "241d9c85-edc4-4b67-beab-f1fd52b70a45"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "upsert",
+        "sheetId": "1UXjKutLclMItkfe7yxt16conqSH54NNDSXKxbHRgMr4",
+        "range": "A:I",
+        "key": "orderId",
+        "options": {}
+      },
+      "name": "Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 1,
+      "position": [
+        0,
+        160
+      ],
+      "id": "72358c8c-6a06-45f3-9bff-838c44c92d3d",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WouXmJ65J28IkkhO",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Generate OTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate OTP": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "8e42b454-7854-40e7-8394-29f8b12734d7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c53ecb28f99c03e7dbc63fc29f3e8196e81e00736c6bd6560a4787342ab9857f"
+  },
+  "id": "vO3F82HpLc6v4bfK",
+  "tags": []
+}
