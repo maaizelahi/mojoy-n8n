@@ -1,0 +1,322 @@
+{
+  "name": "WooCommerce Order to Shipping Slip Generator Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "6e2e45cf-e6b6-4466-8e2e-57938ea4cdbf",
+        "options": {}
+      },
+      "id": "56bd0fe1-6d1a-4bc9-a76a-e22384b78307",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        80
+      ],
+      "webhookId": "6e2e45cf-e6b6-4466-8e2e-57938ea4cdbf"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "isEqualTo",
+              "value2": "processing"
+            }
+          ]
+        }
+      },
+      "id": "861b2784-6785-4d0b-bdda-95ba735a2e4a",
+      "name": "Check if Status is Processing",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "basicAuth",
+        "url": "=https://your-woocommerce-site.com/wp-json/wc/v3/orders/{{ $json.id }}",
+        "options": {}
+      },
+      "id": "888eb310-a5ce-4773-bbd6-b29d516f2208",
+      "name": "Get Order Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Generate unique identifiers and date formats\nconst now = new Date();\nconst invDate = now.toLocaleString('en-US', { \n  day: '2-digit', \n  month: 'short', \n  year: 'numeric',\n  hour: '2-digit',\n  minute: '2-digit',\n  second: '2-digit',\n  hour12: false\n}).replace(',', '');\n\nconst orderDate = new Date($json.date_created);\nconst formattedOrderDate = orderDate.toLocaleString('en-US', { \n  day: '2-digit', \n  month: 'short', \n  year: 'numeric',\n  hour: '2-digit',\n  minute: '2-digit',\n  second: '2-digit',\n  hour12: false\n}).replace(',', '');\n\n// Generate a GST number (for demo)\nconst gstNumber = 'AFCD' + Math.floor(10000000 + Math.random() * 90000000) + 'C1ZH';\n\n// Create order ID\nconst orderId = 'PO' + $json.id.toString().padStart(12, '0');\n\n// Format full address\nconst shippingAddress = $json.shipping;\nlet fullAddress = '';\nif (shippingAddress.first_name || shippingAddress.last_name) {\n  fullAddress += `${shippingAddress.first_name || ''} ${shippingAddress.last_name || ''}`;\n}\n\nlet addressLine = '';\nif (shippingAddress.address_1) {\n  addressLine += shippingAddress.address_1;\n}\nif (shippingAddress.address_2) {\n  addressLine += `, ${shippingAddress.address_2}`;\n}\nif (addressLine) {\n  fullAddress += `\\n${addressLine}`;\n}\n\nlet cityStatePostcode = '';\nif (shippingAddress.city) {\n  cityStatePostcode += shippingAddress.city;\n}\nif (shippingAddress.state) {\n  if (cityStatePostcode) cityStatePostcode += ', ';\n  cityStatePostcode += shippingAddress.state;\n}\nif (shippingAddress.postcode) {\n  fullAddress += `\\n${cityStatePostcode}, ${shippingAddress.postcode}`;\n}\nelse if (cityStatePostcode) {\n  fullAddress += `\\n${cityStatePostcode}`;\n}\n\nif (shippingAddress.country) {\n  fullAddress += `\\n${shippingAddress.country}`;\n}\n\nconst isChilledItem = $json.line_items.some(item => {\n  // Check product metadata or categories to determine if it's a cold item\n  // This is just a sample condition - replace with your actual logic\n  return item.name.toLowerCase().includes('cold') || \n         item.name.toLowerCase().includes('chilled') || \n         item.name.toLowerCase().includes('frozen');\n});\n\nconst deliveryType = isChilledItem ? 'COLD' : 'NORMAL';\nconst deliveryMode = $json.shipping_lines && $json.shipping_lines.length > 0 && \n                  $json.shipping_lines[0].method_id === 'local_pickup' ? 'Pickup' : 'Home';\n\nconst companyInfo = {\n  name: 'TATA 1MG HealthCare Solutions Private Limited',\n  address: 'Plot No.Cp.537, Transport Nagar, Krishna Nagar',\n  city: 'Lucknow, Uttar Pradesh, 226023',\n  phone: '0124-41666666',\n  email: 'care@1mg.com'\n};\n\n// Calculate amount to be collected for COD orders\nconst isCOD = $json.payment_method === 'cod';\nconst amountToCollect = isCOD ? parseFloat($json.total) : 0.00;\n\n// Generate HTML for the shipping slip\nconst htmlContent = `\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Shipping Slip</title>\n    <style>\n        @page {\n            size: 10cm 15cm; /* A6 size */\n            margin: 0;\n        }\n        body {\n            font-family: Arial, sans-serif;\n            margin: 0;\n            padding: 0;\n            font-size: 10px;\n            width: 10cm;\n            height: 15cm;\n            box-sizing: border-box;\n        }\n        .container {\n            width: 100%;\n            height: 100%;\n            border: 1px solid #000;\n        }\n        .header {\n            display: flex;\n            justify-content: space-between;\n            border-bottom: 1px solid #000;\n            padding: 5px;\n        }\n        .header-left {\n            font-weight: bold;\n        }\n        .header-right {\n            border: 1px solid #000;\n            padding: 3px;\n            text-align: center;\n        }\n        .cash-section {\n            border-bottom: 1px solid #000;\n            padding: 5px;\n            font-weight: bold;\n        }\n        .order-id-section {\n            display: flex;\n            border-bottom: 1px solid #000;\n            padding: 5px;\n        }\n        .qr-code {\n            width: 25%;\n            text-align: center;\n        }\n        .order-id {\n            width: 75%;\n            display: flex;\n            flex-direction: column;\n            justify-content: center;\n        }\n        .order-id h2 {\n            margin: 0;\n            font-size: 12px;\n        }\n        .order-id p {\n            margin: 3px 0;\n            font-size: 14px;\n            font-weight: bold;\n        }\n        .delivery-section {\n            border-bottom: 1px solid #000;\n            padding: 5px;\n        }\n        .delivery-section h2 {\n            margin: 0 0 5px 0;\n            font-size: 12px;\n            text-align: center;\n        }\n        .awb-section {\n            border-bottom: 1px solid #000;\n            padding: 5px;\n            text-align: center;\n        }\n        .awb-section h2 {\n            margin: 0 0 5px 0;\n            font-size: 12px;\n        }\n        .company-section {\n            padding: 5px;\n            font-size: 9px;\n        }\n        .stamp {\n            position: relative;\n            text-align: center;\n            margin-top: 10px;\n        }\n        .stamp-item {\n            display: inline-block;\n            border: 3px solid;\n            padding: 5px 10px;\n            border-radius: 50%;\n            transform: rotate(-15deg);\n            font-weight: bold;\n            font-size: 16px;\n            margin: 0 10px;\n        }\n        .cold {\n            color: purple;\n            border-color: purple;\n        }\n        .paid {\n            color: teal;\n            border-color: teal;\n        }\n        .qr-placeholder, .barcode-placeholder {\n            background-color: #000;\n            color: #fff;\n            margin: auto;\n            display: flex;\n            align-items: center;\n            justify-content: center;\n            font-size: 8px;\n        }\n        .qr-placeholder {\n            width: 80px;\n            height: 80px;\n        }\n        .barcode-placeholder {\n            width: 200px;\n            height: 40px;\n        }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <div class=\"header\">\n            <div class=\"header-left\">\n                <p>ESSENTIAL SERVICES</p>\n                <p>INV Date: ${invDate}</p>\n                <p>GST No: ${gstNumber}</p>\n                <p>Order Date: ${formattedOrderDate}</p>\n            </div>\n            <div class=\"header-right\">\n                <p>1MC(one_day_delivery)</p>\n                <p>${deliveryType}</p>\n                <p>${deliveryMode}</p>\n            </div>\n        </div>\n        \n        <div class=\"cash-section\">\n            <p>${isCOD ? 'CASH ON DELIVERY (COD) | Amount To Be Collected: ' + amountToCollect : 'PREPAID | Amount Paid Online'}</p>\n        </div>\n        \n        <div class=\"order-id-section\">\n            <div class=\"qr-code\">\n                <div class=\"qr-placeholder\">\n                    QR: ${orderId}\n                </div>\n            </div>\n            <div class=\"order-id\">\n                <h2>ORDER ID</h2>\n                <p>${orderId}</p>\n            </div>\n        </div>\n        \n        <div class=\"delivery-section\">\n            <h2>DELIVER TO</h2>\n            <p><strong>${shippingAddress.first_name || ''} ${shippingAddress.last_name || ''}</strong></p>\n            <p>${addressLine}</p>\n            <p>${shippingAddress.city || ''}, ${shippingAddress.state || ''}, ${shippingAddress.country || ''}</p>\n            <p>Locality:</p>\n            <p>${shippingAddress.city || ''} - ${shippingAddress.postcode || ''}</p>\n        </div>\n        \n        <div class=\"awb-section\">\n            <h2>AWB No.</h2>\n            <div>\n                <div class=\"barcode-placeholder\">\n                    Barcode: ${orderId}\n                </div>\n                <p>${orderId}</p>\n            </div>\n        </div>\n        \n        <div class=\"company-section\">\n            <p><strong>${companyInfo.name}</strong></p>\n            <p>${companyInfo.address}, ${companyInfo.city}</p>\n            <p>ph: ${companyInfo.phone} email id: ${companyInfo.email}</p>\n        </div>\n        \n        <div class=\"stamp\">\n            <span class=\"stamp-item cold\">COLD</span>\n            <span class=\"stamp-item paid\">${isCOD ? 'COD' : 'PAID'}</span>\n        </div>\n    </div>\n</body>\n</html>\n`;\n\nreturn {\n  orderId,\n  customerName: `${shippingAddress.first_name || ''} ${shippingAddress.last_name || ''}`,\n  htmlContent,\n  orderData: $json,\n  deliveryType,\n  isCOD,\n  amountToCollect: amountToCollect.toFixed(2)\n};"
+      },
+      "id": "34517cb0-0bc8-435d-b652-2b95bb85e61d",
+      "name": "Prepare Shipping Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "9c364e36-7be1-4054-8b06-de6a31be24ba",
+      "name": "No Operation",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        0,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.pdfshift.io/v3/convert/pdf",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "source",
+              "value": "={{ $json.htmlContent }}"
+            },
+            {
+              "name": "format",
+              "value": "A6"
+            },
+            {
+              "name": "landscape",
+              "value": false
+            },
+            {
+              "name": "filename",
+              "value": "={{ 'shipping-slip-' + $json.orderId + '.pdf' }}"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {},
+          "timeout": 30000
+        }
+      },
+      "id": "954162ba-becf-4405-b452-cf3872336fcf",
+      "name": "HTML to PDF Converter",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        400,
+        0
+      ],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "167a964e-caf8-481a-8cfb-280a18ebca61",
+      "name": "Save PDF Locally",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Add to daily batch file\nconst fs = require('fs');\nconst path = require('path');\n\n// Create today's date in YYYY-MM-DD format\nconst today = new Date().toISOString().split('T')[0];\n\n// Path to the daily batch file\nconst batchFilePath = path.join('./shipping_slips', `batch_${today}.txt`);\n\n// Append the file path to the batch file\nconst pdfPath = `./shipping_slips/${$json.orderId}.pdf`;\n\ntry {\n  // Make directory if it doesn't exist\n  if (!fs.existsSync('./shipping_slips')) {\n    fs.mkdirSync('./shipping_slips', { recursive: true });\n  }\n  \n  // Append to batch file\n  fs.appendFileSync(batchFilePath, pdfPath + '\\n');\n  \n  // Update the order count file\n  const countFilePath = path.join('./shipping_slips', `count_${today}.txt`);\n  let count = 1;\n  \n  if (fs.existsSync(countFilePath)) {\n    count = parseInt(fs.readFileSync(countFilePath, 'utf8')) + 1;\n  }\n  \n  fs.writeFileSync(countFilePath, count.toString());\n  \n  return {\n    success: true,\n    batchFile: batchFilePath,\n    totalSlips: count,\n    message: `Added order ${$json.orderId} to batch file for ${today}. Total: ${count} slips.`\n  };\n} catch (error) {\n  return {\n    success: false,\n    error: error.message\n  };\n}"
+      },
+      "id": "ae908f25-dfff-483b-b36b-fc096f1a9403",
+      "name": "Add to Batch",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        800,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "order",
+        "operation": "create",
+        "additionalFields": {},
+        "billingUi": {},
+        "couponLinesUi": {},
+        "feeLinesUi": {},
+        "lineItemsUi": {},
+        "metadataUi": {},
+        "shippingUi": {},
+        "shippingLinesUi": {}
+      },
+      "id": "331e8e4b-671f-4587-9436-70619454ed19",
+      "name": "Update Order Metadata",
+      "type": "n8n-nodes-base.wooCommerce",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// This function runs on a scheduled basis (e.g., hourly)\n// It checks if it's time to generate the compiled PDF for printing\n\nconst fs = require('fs');\nconst path = require('path');\nconst { PDFDocument } = require('pdf-lib');\n\n// Get today's date\nconst today = new Date().toISOString().split('T')[0];\nconst now = new Date();\nconst currentHour = now.getHours();\n\n// Define batch processing times (e.g., 12pm, 4pm, and 8pm)\nconst batchTimes = [12, 16, 20];\n\n// Determine which batch this is\nlet batchNumber = 0;\nfor (let i = 0; i < batchTimes.length; i++) {\n  if (currentHour < batchTimes[i]) {\n    batchNumber = i; // This is the upcoming batch\n    break;\n  }\n  batchNumber = i + 1; // If past all batch times, prepare for next day's first batch\n}\n\n// Paths\nconst batchFilePath = path.join('./shipping_slips', `batch_${today}.txt`);\nconst compiledPdfPath = path.join('./shipping_slips', `batch_${today}_${batchNumber}.pdf`);\n\n// Check if it's time to process and if we have files to process\nif (!fs.existsSync(batchFilePath)) {\n  return { status: 'No batch file found' };\n}\n\n// Read the batch file to get all PDFs to combine\nconst pdfPaths = fs.readFileSync(batchFilePath, 'utf8').trim().split('\\n');\n\nif (pdfPaths.length === 0) {\n  return { status: 'No PDFs to process' };\n}\n\n// In a production environment, you would now:\n// 1. Combine all PDFs into one using a PDF library\n// 2. Send to print server or third-party printing service\n// 3. Then clear the batch file after successful printing\n\n// For this example, we'll just simulate the process\nreturn {\n  status: 'Batch processing ready',\n  batchDate: today,\n  batchNumber: batchNumber,\n  pdfCount: pdfPaths.length,\n  outputPath: compiledPdfPath,\n  // In production, add connection details to your printing service\n  printService: {\n    type: 'thermal_printer',\n    model: 'recommended: Zebra ZD621 or Dymo 4XL',\n    printCommand: `lp -d PRINTER_NAME -o media=Custom.10x15cm ${compiledPdfPath}`\n  }\n};"
+      },
+      "id": "48e4602f-f022-4281-b273-3aed8ab35dd8",
+      "name": "Batch Processing",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        400,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "c8484b91-cb15-482a-a847-13d29483f403",
+      "name": "Schedule Trigger for Batch Processing",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        200,
+        180
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check if Status is Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Status is Processing": {
+      "main": [
+        [
+          {
+            "node": "Get Order Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Order Details": {
+      "main": [
+        [
+          {
+            "node": "Prepare Shipping Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Shipping Data": {
+      "main": [
+        [
+          {
+            "node": "HTML to PDF Converter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML to PDF Converter": {
+      "main": [
+        [
+          {
+            "node": "Save PDF Locally",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save PDF Locally": {
+      "main": [
+        [
+          {
+            "node": "Add to Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to Batch": {
+      "main": [
+        [
+          {
+            "node": "Update Order Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger for Batch Processing": {
+      "main": [
+        [
+          {
+            "node": "Batch Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "9ef36550-9a49-46e1-8904-ac830a52f4b6",
+  "meta": {
+    "instanceId": "c53ecb28f99c03e7dbc63fc29f3e8196e81e00736c6bd6560a4787342ab9857f"
+  },
+  "id": "2diSOMFwLaDWAbwi",
+  "tags": [
+    {
+      "createdAt": "2025-05-05T12:44:10.783Z",
+      "updatedAt": "2025-05-05T12:44:10.783Z",
+      "id": "8RQJptTv7BS9sUFE",
+      "name": "woocommerce"
+    },
+    {
+      "createdAt": "2025-05-05T11:20:28.191Z",
+      "updatedAt": "2025-05-05T11:20:28.191Z",
+      "id": "1w0JXJvToXsyNaPe",
+      "name": "Mojoy"
+    }
+  ]
+}
