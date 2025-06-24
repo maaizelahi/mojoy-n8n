@@ -73,11 +73,7 @@
         "url": "={{ $secrets.MSG91_API_URL || 'https://api.msg91.com/api/v5/flow/' }}",
         "jsonBody": "{\n    \"flow_id\": \"{{ $secrets.MSG91_FLOW_ID || 'YOUR_MSG91_FLOW_ID_HERE' }}\",\n    \"sender\": \"{{ $secrets.MSG91_SENDER_ID || 'SENDERID' }}\",\n    \"mobiles\": \"91{{$json.phone}}\",\n    \"VAR1\": \"{{$json.customerName}}\",\n    \"VAR2\": \"{{$json.otp}}\",\n    \"VAR3\": \"{{$json.orderId}}\"\n}",
         "options": {
-          "response": {
-            "response": {
-              "fullResponse": true
-            }
-          }
+          "fullResponse": true
         },
         "headerParametersUi": {
           "parameter": [
