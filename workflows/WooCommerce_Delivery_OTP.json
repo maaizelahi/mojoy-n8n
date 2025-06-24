@@ -68,20 +68,12 @@
     },
     {
       "parameters": {
-        "authentication": "apiKey",
+        "authentication": "httpHeaderAuth",
         "requestMethod": "POST",
         "url": "={{ $secrets.MSG91_API_URL || 'https://api.msg91.com/api/v5/flow/' }}",
         "jsonBody": "{\n    \"flow_id\": \"{{ $secrets.MSG91_FLOW_ID || 'YOUR_MSG91_FLOW_ID_HERE' }}\",\n    \"sender\": \"{{ $secrets.MSG91_SENDER_ID || 'SENDERID' }}\",\n    \"mobiles\": \"91{{$json.phone}}\",\n    \"VAR1\": \"{{$json.customerName}}\",\n    \"VAR2\": \"{{$json.otp}}\",\n    \"VAR3\": \"{{$json.orderId}}\"\n}",
         "options": {
           "fullResponse": true
-        },
-        "headerParametersUi": {
-          "parameter": [
-            {
-              "name": "authkey",
-              "value": "{{ $credentials.MSG91Api.apiKey }}"
-            }
-          ]
         }
       },
       "name": "Send SMS via MSG91",
@@ -94,8 +86,8 @@
       "id": "241d9c85-edc4-4b67-beab-f1fd52b70a45",
       "credentials": {
         "httpHeaderAuth": {
-          "id": "YOUR_MSG91_CREDENTIAL_ID",
-          "name": "MSG91ApiKeyAuth"
+          "id": "YOUR_MSG91_CREDENTIAL_ID_REPLACE_ME",
+          "name": "MSG91 Header Auth Credential Name Replace Me"
         }
       }
     },

@@ -173,7 +173,7 @@
               "columnName": "Delivery Notes",
               "columnValue": "={{ $('Process Lookup & Verify OTP').item.json.deliveryNotes }}"
             },
-             {
+            {
               "columnName": "Delivery Person",
               "columnValue": "={{ $('Process Lookup & Verify OTP').item.json.deliveryPersonName }}"
             }
