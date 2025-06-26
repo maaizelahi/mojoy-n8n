@@ -1,5 +1,6 @@
 {
   "name": "Delivery Confirmation via Spreadsheet",
+  "description": "Handles delivery confirmation via OTP, updates Google Sheets, and WooCommerce. \nRequired Environment Variables:\n- OTP_TRACKING_SHEET_ID: Google Sheet ID for the OTP tracking master list.\n- OTP_TRACKING_SHEET_NAME: Sheet name (tab name) within the OTP_TRACKING_SHEET_ID for OTP data.\n- DELIVERY_FORM_RESPONSES_SHEET_ID: Google Sheet ID for logging all delivery form responses/attempts.\n- DELIVERY_FORM_RESPONSES_SHEET_NAME: Sheet name (tab name) for the delivery responses log.",
   "nodes": [
     {
       "parameters": {
@@ -7,7 +8,8 @@
         "path": "delivery-confirmation-sheet",
         "options": {
           "rawBody": true
-        }
+        },
+        "notes": "SECURITY: Implement rate limiting for this webhook endpoint at the API Gateway or reverse proxy level."
       },
       "id": "96fd9052-553e-488d-af1c-edcc603f9b0d",
       "name": "Webhook: Delivery Confirmation",
@@ -18,7 +20,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract data from the webhook payload (e.g., from Google Apps Script or a form)\nconst input = $input.first().json;\nlet formData;\n\ntry {\n  if (input.body) {\n    formData = typeof input.body === 'string' ? JSON.parse(input.body) : input.body;\n  } else {\n    formData = input; // Assuming data is at the top level if no 'body' property\n  }\n} catch (e) {\n  console.error(\"Error parsing formData:\", e, \"Input was:\", JSON.stringify(input));\n  return { json: { success: false, message: \"Invalid JSON payload.\", errorType: \"INVALID_PAYLOAD\" } };\n}\n\n// Extract and validate required fields\nconst orderId = (formData.orderId || formData['Order ID'] || '').toString().trim();\nconst deliveryPersonName = (formData.deliveryPersonName || formData['Delivery Person Name'] || '').toString().trim();\nconst otp = (formData.otp || formData['OTP'] || '').toString().trim();\n\nlet errors = [];\nif (!orderId) errors.push(\"Order ID is required.\");\nif (!deliveryPersonName) errors.push(\"Delivery Person Name is required.\");\nif (!otp) errors.push(\"OTP is required.\");\n\nif (errors.length > 0) {\n  return {\n    json: {\n      success: false,\n      message: \"Validation failed: \" + errors.join(' '),\n      errorType: \"INVALID_INPUT\",\n      validationDetails: errors.join(' '),\n      validInputs: false\n    }\n  };\n}\n\n// Optional fields\nconst deliveryStatus = formData.deliveryStatus || formData['Delivery Status'] || \"Delivered\";\nconst deliveryNotes = formData.deliveryNotes || formData['Delivery Notes'] || \"\";\nconst rowId = formData.rowId || formData.row || null;\nconst spreadsheetId = formData.spreadsheetId || null; // Might be useful for context\n\nreturn {\n  json: {\n    orderId,\n    deliveryPersonName,\n    otp,\n    deliveryStatus,\n    deliveryNotes,\n    rowId,\n    spreadsheetId,\n    timestamp: new Date().toISOString(),\n    validInputs: true,\n    validationMessage: \"All required fields present\"\n  }\n};"
+        "jsCode": "// Extract data from the webhook payload (e.g., from Google Apps Script or a form)\nconst input = $input.first().json;\nlet formData;\n\ntry {\n  if (input.body) {\n    formData = typeof input.body === 'string' ? JSON.parse(input.body) : input.body;\n  } else {\n    formData = input; // Assuming data is at the top level if no 'body' property\n  }\n} catch (e) {\n  console.error(\"Error parsing formData:\", e, \"Input was:\", JSON.stringify(input));\n  return { json: { success: false, message: \"Invalid JSON payload.\", errorType: \"INVALID_PAYLOAD\" } };\n}\n\n// --- Input Sanitization and Validation Functions ---\nfunction sanitizeString(str, allowBasicPunctuation = false) {\n  if (str === null || typeof str === 'undefined') str = '';\n  str = String(str); // Ensure it's a string before regex\n  if (allowBasicPunctuation) {\n    return str.replace(/[<>\\\"&%$;()+\\\\/]+/g, '');\n  }\n  return str.replace(/[^a-zA-Z0-9-_]/g, '');\n}\n\nfunction sanitizeOtp(str) {\n  if (str === null || typeof str === 'undefined') str = '';\n  str = String(str);\n  return str.replace(/[^0-9]/g, '');\n}\n\n// Extract, sanitize, and validate required fields\nlet errors = [];\nconst now = new Date();\nconst processingTimestamp = now.toISOString();\n\n// Order ID\nlet orderId = (formData.orderId || formData['Order ID'] || '');\norderId = sanitizeString(orderId.toString().trim()); \nif (!orderId) {\n  errors.push(\"Order ID is required.\");\n} else if (orderId.length > 50) { \n  errors.push(\"Order ID is too long (max 50 chars).\");\n} else if (!/^[a-zA-Z0-9-_]+$/.test(orderId)) { \n  errors.push(\"Order ID contains invalid characters. Only alphanumeric, hyphen, and underscore are allowed.\");\n}\n\n// Delivery Person Name\nlet deliveryPersonName = (formData.deliveryPersonName || formData['Delivery Person Name'] || '');\ndeliveryPersonName = sanitizeString(deliveryPersonName.toString().trim(), true); \nif (!deliveryPersonName) {\n  errors.push(\"Delivery Person Name is required.\");\n} else if (deliveryPersonName.length > 100) { \n  errors.push(\"Delivery Person Name is too long (max 100 chars).\");\n}\n\n// OTP\nlet otp = (formData.otp || formData['OTP'] || '');\notp = sanitizeOtp(otp.toString().trim()); \nif (!otp) {\n  errors.push(\"OTP is required.\");\n} else if (!/^[0-9]{4,8}$/.test(otp)) { \n  errors.push(\"OTP must be 4-8 digits.\");\n}\n\n// Timestamp from payload (optional, for validation if provided by source)\nconst incomingTimestampStr = formData.timestamp || null;\nlet validatedIncomingTimestamp = null;\nif (incomingTimestampStr) {\n  const parsedDate = new Date(incomingTimestampStr);\n  if (isNaN(parsedDate.getTime())) {\n    errors.push(\"Invalid format for provided timestamp. Please use ISO 8601 format.\");\n  } else {\n    const timeDiffMinutes = (now.getTime() - parsedDate.getTime()) / 60000;\n    if (timeDiffMinutes > 1440) { // More than 24 hours old\n      errors.push(\"Provided timestamp is too old (older than 24 hours).\");\n    } else if (timeDiffMinutes < -10) { // 10 minutes in the future (allowing for small clock drifts)\n      errors.push(\"Provided timestamp is from the future.\");\n    } else {\n      validatedIncomingTimestamp = parsedDate.toISOString();\n    }\n  }\n}\n\nif (errors.length > 0) {\n  return {\n    json: {\n      success: false,\n      message: \"Validation failed: \" + errors.join(' '),\n      errorType: \"INVALID_INPUT\",\n      validationDetails: errors.join(' '),\n      loggedAt: processingTimestamp,\n      validInputs: false\n    }\n  };\n}\n\n// Optional fields (sanitize them as well)\nconst deliveryStatus = sanitizeString((formData.deliveryStatus || formData['Delivery Status'] || \"Delivered\").toString().trim(), true);\nconst deliveryNotes = sanitizeString((formData.deliveryNotes || formData['Delivery Notes'] || \"\").toString().trim(), true); \nconst rowId = formData.rowId || formData.row || null; \nconst spreadsheetId = sanitizeString((formData.spreadsheetId || '').toString().trim());\n\nreturn {\n  json: {\n    orderId,\n    deliveryPersonName,\n    otp,\n    deliveryStatus,\n    deliveryNotes,\n    rowId,\n    spreadsheetId,\n    originalTimestamp: validatedIncomingTimestamp, \n    processingTimestamp: processingTimestamp, \n    validInputs: true,\n    validationMessage: \"All required fields present and seem valid\"\n  }\n};"
       },
       "id": "ec57750f-efdd-45ce-b6f0-c1288f6d5a49",
       "name": "Extract & Validate Form Data",
@@ -62,7 +64,8 @@
         "lookupValue": "={{ $('Extract & Validate Form Data').item.json.orderId }}",
         "options": {
           "returnAllMatches": false
-        }
+        },
+        "notes": "ENHANCEMENT: For frequent transient errors, consider implementing workflow-level retry logic or utilize n8n's global retry settings."
       },
       "id": "3fff7f6a-05ff-4a60-b882-2ed8f63b8b6a",
       "name": "GSheets: Look Up Order",
@@ -78,7 +81,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Process the Google Sheets lookup results\nconst lookupResultItem = $input.first(); // Google Sheets v4 lookup returns one item or error\nconst inputDataFromExtract = $('Extract & Validate Form Data').first().json;\n\nconsole.log(\"Lookup result from Google Sheets:\", JSON.stringify(lookupResultItem.json));\n\nif (!lookupResultItem.json || Object.keys(lookupResultItem.json).length === 0) { // Check if json is empty or undefined\n  return {\n    json: {\n      ...inputDataFromExtract,\n      success: false,\n      message: \"Order ID not found in the tracking system.\",\n      errorType: \"ORDER_NOT_FOUND\",\n      orderExists: false\n    }\n  };\n}\n\nconst orderData = lookupResultItem.json;\n\nconst storedOtp = orderData.otp ? orderData.otp.toString().trim() : null;\nconst providedOtp = inputDataFromExtract.otp;\nconst rowId = orderData.rowNumber || inputDataFromExtract.rowId; // Prefer rowNumber from lookup\n\nconst otpMatches = storedOtp === providedOtp;\n\nreturn {\n  json: {\n    ...inputDataFromExtract,\n    ...orderData, // data from the sheet (like stored OTP, original address etc.)\n    orderId: inputDataFromExtract.orderId, // Ensure this comes from the input form\n    rowId, // Corrected rowId\n    providedOtp,\n    storedOtp,\n    otpMatches,\n    orderExists: true,\n    deliveryTime: new Date().toISOString()\n  }\n};"
+        "jsCode": "// Process the Google Sheets lookup results\nconst lookupResultItem = $input.first(); // Google Sheets v4 lookup returns one item or error\nconst inputDataFromExtract = $('Extract & Validate Form Data').first().json;\n\nconsole.log(\"Lookup result from Google Sheets:\", JSON.stringify(lookupResultItem.json));\n\nif (!lookupResultItem.json || Object.keys(lookupResultItem.json).length === 0) { // Check if json is empty or undefined\n  return {\n    json: {\n      ...inputDataFromExtract,\n      success: false,\n      message: \"Order ID not found in the tracking system.\",\n      errorType: \"ORDER_NOT_FOUND\",\n      orderExists: false\n    }\n  };\n}\n\nconst orderData = lookupResultItem.json;\n\nconst storedOtp = orderData.otp ? orderData.otp.toString().trim() : null;\nconst providedOtp = inputDataFromExtract.otp;\nconst rowId = orderData.rowNumber || inputDataFromExtract.rowId; // Prefer rowNumber from lookup\n\nconst otpMatches = storedOtp === providedOtp;\n\n// Placeholder: these fields would come from the Google Sheet if added there\nconst customerName = orderData.customerName || 'N/A';\nconst customerPhoneNumber = orderData.customerPhoneNumber || 'N/A';\nconst deliveryInstructions = orderData.deliveryInstructions || 'None';\n\nreturn {\n  json: {\n    ...inputDataFromExtract,\n    ...orderData, // data from the sheet (like stored OTP, original address etc.)\n    orderId: inputDataFromExtract.orderId, // Ensure this comes from the input form\n    rowId, // Corrected rowId\n    providedOtp,\n    storedOtp,\n    otpMatches,\n    orderExists: true,\n    deliveryTime: inputDataFromExtract.processingTimestamp, // Use consistent timestamp\n    // Pass along enriched data\n    customerName,\n    customerPhoneNumber,\n    deliveryInstructions\n  }\n};"
       },
       "id": "164aa897-74bf-4269-bebd-6b4aa307abc7",
       "name": "Process Lookup & Verify OTP",
@@ -160,7 +163,8 @@
         },
         "options": {
           "valueInputMode": "USER_ENTERED"
-        }
+        },
+        "notes": "ENHANCEMENT: For frequent transient errors, consider implementing workflow-level retry logic or utilize n8n's global retry settings."
       },
       "id": "9d1bd16a-e9b2-4f47-b2a6-25c8a1ee9d7e",
       "name": "GSheets: Update Form Response Log",
@@ -181,7 +185,7 @@
         "orderId": "={{ $('Process Lookup & Verify OTP').item.json.orderId }}",
         "updateFields": {
           "status": "completed",
-          "note": "Order delivery confirmed via OTP by {{$('Process Lookup & Verify OTP').item.json.deliveryPersonName}}. Notes: {{$('Process Lookup & Verify OTP').item.json.deliveryNotes}}"
+          "note": "Order delivery confirmed via OTP by {{$('Process Lookup & Verify OTP').item.json.deliveryPersonName}}. Notes: {{$('Process Lookup & Verify OTP').item.json.deliveryNotes}}. Confirmed at: {{$('Process Lookup & Verify OTP').item.json.deliveryTime}}"
         },
         "options": {}
       },
@@ -199,7 +203,17 @@
     },
     {
       "parameters": {
-        "jsCode": "// Create success response for delivery person\nconst processNodeData = $('Process Lookup & Verify OTP').first().json;\nreturn {\n  json: {\n    success: true,\n    message: \"Delivery confirmed successfully! Order status updated.\",\n    details: {\n      orderId: processNodeData.orderId,\n      deliveryPerson: processNodeData.deliveryPersonName,\n      timestamp: processNodeData.deliveryTime,\n      status: processNodeData.deliveryStatus\n    }\n  }\n};"
+        "jsCode": "// Placeholder for sending notifications (e.g., SMS to customer)\nconst processData = $('Process Lookup & Verify OTP').first().json;\nconsole.log(`Placeholder: Send notification for order ${processData.orderId}. Customer: ${processData.customerName}, Phone: ${processData.customerPhoneNumber}`);\n// Example: items.push({json: {message: \"Notification logic to be implemented here\"}}); // If this node should output data\nreturn $input.first().json; // Pass through data from WooCommerce node"
+      },
+      "id": "PLACEHOLDER_SEND_NOTIFICATION",
+      "name": "Placeholder: Send Notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [610, -20]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create success response for delivery person\nconst processNodeData = $('Process Lookup & Verify OTP').first().json;\nreturn {\n  json: {\n    success: true,\n    message: \"Delivery confirmed successfully! Order status updated. Notification (simulated) sent.\",\n    details: {\n      orderId: processNodeData.orderId,\n      deliveryPerson: processNodeData.deliveryPersonName,\n      timestamp: processNodeData.deliveryTime,\n      status: processNodeData.deliveryStatus,\n      customerName: processNodeData.customerName || 'N/A',\n      customerPhoneNumber: processNodeData.customerPhoneNumber || 'N/A',\n      deliveryInstructions: processNodeData.deliveryInstructions || 'None'\n    }\n  }\n};"
       },
       "id": "a19ec7cd-359f-4068-94ed-fd69349c4f97",
       "name": "Success Response",
@@ -209,7 +223,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Create OTP mismatch error response\nconst processNodeData = $('Process Lookup & Verify OTP').first().json;\nreturn {\n  json: {\n    success: false,\n    message: \"Delivery verification failed: OTP does not match. Please check and try again.\",\n    errorType: \"OTP_MISMATCH\",\n    orderId: processNodeData.orderId\n  }\n};"
+        "jsCode": "// Create OTP mismatch error response\nconst processNodeData = $('Process Lookup & Verify OTP').first().json;\nconst initialInputData = $('Extract & Validate Form Data').first().json;\nreturn {\n  json: {\n    success: false,\n    message: \"Delivery verification failed: OTP does not match. Please check and try again.\",\n    errorType: \"OTP_MISMATCH\",\n    orderId: processNodeData.orderId,\n    loggedAt: initialInputData.processingTimestamp\n  }\n};"
       },
       "id": "82661605-cd67-44b3-97a4-33e3f0c15917",
       "name": "OTP Mismatch Response",
@@ -219,7 +233,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Create order not found error response from 'Process Lookup & Verify OTP' node\nconst processNodeData = $('Process Lookup & Verify OTP').first().json;\nreturn {\n  json: {\n    success: false,\n    message: processNodeData.message || \"Order not found in the tracking system. Please check the Order ID.\",\n    errorType: \"ORDER_NOT_FOUND\",\n    orderId: processNodeData.orderId\n  }\n};"
+        "jsCode": "// Create order not found error response from 'Process Lookup & Verify OTP' node\nconst processNodeData = $('Process Lookup & Verify OTP').first().json;\nconst initialInputData = $('Extract & Validate Form Data').first().json;\nreturn {\n  json: {\n    success: false,\n    message: processNodeData.message || \"Order not found in the tracking system. Please check the Order ID.\",\n    errorType: \"ORDER_NOT_FOUND\",\n    orderId: processNodeData.orderId,\n    loggedAt: initialInputData.processingTimestamp\n  }\n};"
       },
       "id": "f3544316-98b8-4f02-a4e5-d385547e0983",
       "name": "Order Not Found Response",
@@ -229,7 +243,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Create invalid input error response from 'Extract & Validate Form Data' node\nconst validationNodeData = $('Extract & Validate Form Data').first().json;\nreturn {\n  json: {\n    success: false,\n    message: validationNodeData.message || \"Invalid or missing input data. Please provide all required fields.\",\n    errorType: \"INVALID_INPUT\",\n    validationDetails: validationNodeData.validationDetails\n  }\n};"
+        "jsCode": "// Create invalid input error response from 'Extract & Validate Form Data' node\nconst validationNodeData = $('Extract & Validate Form Data').first().json;\nreturn {\n  json: {\n    success: false,\n    message: validationNodeData.message || \"Invalid or missing input data. Please provide all required fields.\",\n    errorType: \"INVALID_INPUT\",\n    validationDetails: validationNodeData.validationDetails,\n    loggedAt: validationNodeData.processingTimestamp // Already includes loggedAt\n  }\n};"
       },
       "id": "718b8837-7a3a-4cd2-8fac-f281d13c3bad",
       "name": "Invalid Input Response",
@@ -250,17 +264,17 @@
     },
     {
       "parameters": {
-        "jsCode": "console.error(\"Error looking up order in Google Sheets:\", JSON.stringify($input.first().json));\nconst originalInput = $('Extract & Validate Form Data').first().json;\nreturn { json: { success: false, message: 'Error accessing order data. Please try again later.', errorType: 'GSHEETS_LOOKUP_FAILED', orderId: originalInput.orderId } };"
+        "jsCode": "const errorInput = $input.first().json;\nconst originalInput = $('Extract & Validate Form Data').first().json;\nconst processingTs = originalInput.processingTimestamp || new Date().toISOString();\nconsole.error(`Error looking up order in Google Sheets at ${processingTs}. Order ID: ${originalInput.orderId}. Error:`, JSON.stringify(errorInput));\nreturn { json: { success: false, message: 'Error accessing order data. Please try again later.', errorType: 'GSHEETS_LOOKUP_FAILED', orderId: originalInput.orderId, loggedAt: processingTs } };"
       },
       "name": "Handle GSheets Lookup Error",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [-640, 480],
+      "position": [-640, 80],
       "id": "HANDLE_GSHEETS_LOOKUP_ERROR"
     },
     {
       "parameters": {
-        "jsCode": "console.error(\"Error updating Google Sheets Form Response Log:\", JSON.stringify($input.first().json));\nconst otpData = $('Process Lookup & Verify OTP').first().json;\n// This error is post-OTP check, so we might proceed or just log and respond with a generic error\nreturn { json: { success: false, message: 'Delivery confirmed, but error logging response. Please contact support.', errorType: 'GSHEETS_LOG_UPDATE_FAILED', orderId: otpData.orderId } };"
+        "jsCode": "const errorInput = $input.first().json;\nconst otpData = $('Process Lookup & Verify OTP').first().json;\nconst processingTs = otpData.deliveryTime || new Date().toISOString();\nconsole.error(`Error updating Google Sheets Form Response Log at ${processingTs}. Order ID: ${otpData.orderId}. Error:`, JSON.stringify(errorInput));\nreturn { json: { success: false, message: 'Delivery confirmed, but error logging response. Please contact support.', errorType: 'GSHEETS_LOG_UPDATE_FAILED', orderId: otpData.orderId, loggedAt: processingTs } };"
       },
       "name": "Handle GSheets Log Update Error",
       "type": "n8n-nodes-base.code",
@@ -270,12 +284,15 @@
     },
     {
       "parameters": {
-        "jsCode": "console.error(\"Error updating WooCommerce order:\", JSON.stringify($input.first().json));\nconst otpData = $('Process Lookup & Verify OTP').first().json;\nreturn { json: { success: false, message: 'Delivery confirmed, but error updating order in WooCommerce. Please contact support.', errorType: 'WOOCOMMERCE_UPDATE_FAILED', orderId: otpData.orderId } };"
+        "jsCode": "const errorInput = $input.first().json;\nconst otpData = $('Process Lookup & Verify OTP').first().json;\nconst processingTs = otpData.deliveryTime || new Date().toISOString();\nconsole.error(`Error updating WooCommerce order at ${processingTs}. Order ID: ${otpData.orderId}. Error:`, JSON.stringify(errorInput));\nreturn { json: { success: false, message: 'Delivery confirmed, but error updating order in WooCommerce. Please contact support.', errorType: 'WOOCOMMERCE_UPDATE_FAILED', orderId: otpData.orderId, loggedAt: processingTs } };"
       },
       "name": "Handle WooCommerce Update Error",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [500, -20],
+      "position": [
+        500,
+        -100 // Adjusted position
+      ],
       "id": "HANDLE_WOOCOMMERCE_ERROR"
     },
     {
@@ -320,7 +337,8 @@
         },
         "options": {
           "valueInputMode": "USER_ENTERED"
-        }
+        },
+        "notes": "ENHANCEMENT: For frequent transient errors, consider implementing workflow-level retry logic or utilize n8n's global retry settings."
       },
       "id": "UPDATE_MAIN_TRACKING_SHEET_SUCCESS",
       "name": "GSheets: Update Main Tracking (Success)",
@@ -336,12 +354,15 @@
     },
     {
       "parameters": {
-        "jsCode": "console.error(\"Error updating main tracking sheet on success path:\", JSON.stringify($input.first().json));\n// Continue the flow as this is a secondary update\nreturn $input.first().json; // Pass through original data from 'Process Lookup & Verify OTP'"
+        "jsCode": "const errorInput = $input.first().json;\nconst originalData = $('Process Lookup & Verify OTP').first().json; // Data before this GSheet step failed\nconst processingTs = originalData.deliveryTime || new Date().toISOString();\nconsole.error(`Error updating main tracking sheet on success path at ${processingTs}. Order ID: ${originalData.orderId}. Error:`, JSON.stringify(errorInput));\n// Continue the flow as this is a secondary update. Pass through the data from before this failed step.\nreturn originalData;"
       },
       "name": "Handle Main Tracking Update Error (Success Path)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [260, 380],
+      "position": [
+        260,
+        80 // Error path for UPDATE_MAIN_TRACKING_SHEET_SUCCESS
+      ],
       "id": "HANDLE_MAIN_TRACKING_UPDATE_ERROR_SUCCESS"
     }
   ],
@@ -349,91 +370,33 @@
   "connections": {
     "Webhook: Delivery Confirmation": {
       "main": [
-        [
-          {
-            "node": "Extract & Validate Form Data",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Extract & Validate Form Data", "type": "main", "index": 0 }]
       ]
     },
     "Extract & Validate Form Data": {
-      "main": [
-        [
-          {
-            "node": "Valid Inputs?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Valid Inputs?", "type": "main", "index": 0 }]]
     },
     "Valid Inputs?": {
       "main": [
-        [
-          {
-            "node": "GSheets: Look Up Order",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Invalid Input Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "GSheets: Look Up Order", "type": "main", "index": 0 }],
+        [{ "node": "Invalid Input Response", "type": "main", "index": 0 }]
       ]
     },
     "GSheets: Look Up Order": {
       "main": [
-        [
-          {
-            "node": "Process Lookup & Verify OTP",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Process Lookup & Verify OTP", "type": "main", "index": 0 }]
       ],
       "error": [
-        [
-          {
-            "node": "Handle GSheets Lookup Error",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Handle GSheets Lookup Error", "type": "main", "index": 0 }]
       ]
     },
     "Process Lookup & Verify OTP": {
-      "main": [
-        [
-          {
-            "node": "Order Exists?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Order Exists?", "type": "main", "index": 0 }]]
     },
     "Order Exists?": {
       "main": [
-        [
-          {
-            "node": "OTP Matches?",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Order Not Found Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "OTP Matches?", "type": "main", "index": 0 }],
+        [{ "node": "Order Not Found Response", "type": "main", "index": 0 }]
       ]
     },
     "OTP Matches?": {
@@ -445,130 +408,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "OTP Mismatch Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "GSheets: Update Form Response Log": {
-      "main": [
-        [
-          {
-            "node": "WooCommerce: Update Order Status",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ],
-      "error": [
-        [
-          {
-            "node": "Handle GSheets Log Update Error",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "WooCommerce: Update Order Status": {
-      "main": [
-        [
-          {
-            "node": "Success Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ],
-      "error": [
-        [
-          {
-            "node": "Handle WooCommerce Update Error",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Success Response": {
-      "main": [
-        [
-          {
-            "node": "Respond to Webhook",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "OTP Mismatch Response": {
-      "main": [
-        [
-          {
-            "node": "Respond to Webhook",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Order Not Found Response": {
-      "main": [
-        [
-          {
-            "node": "Respond to Webhook",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Invalid Input Response": {
-      "main": [
-        [
-          {
-            "node": "Respond to Webhook",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Handle GSheets Lookup Error": {
-      "main": [
-        [
-          {
-            "node": "Respond to Webhook",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Handle GSheets Log Update Error": {
-      "main": [
-        [
-          {
-            "node": "WooCommerce: Update Order Status",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Handle WooCommerce Update Error": {
-      "main": [
-        [
-          {
-            "node": "Respond to Webhook",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "OTP Mismatch Response", "type": "main", "index": 0 }]
       ]
     },
     "GSheets: Update Main Tracking (Success)": {
@@ -601,6 +441,71 @@
           }
         ]
       ]
+    },
+    "GSheets: Update Form Response Log": {
+      "main": [
+        [
+          {
+            "node": "WooCommerce: Update Order Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Handle GSheets Log Update Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WooCommerce: Update Order Status": {
+      "main": [
+        [
+          {
+            "node": "Placeholder: Send Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Handle WooCommerce Update Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Placeholder: Send Notification": {
+      "main": [[{ "node": "Success Response", "type": "main", "index": 0 }]]
+      // No explicit error connection for placeholder, assumes it passes through or simple log
+    },
+    "Success Response": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    },
+    "OTP Mismatch Response": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    },
+    "Order Not Found Response": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    },
+    "Invalid Input Response": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    },
+    "Handle GSheets Lookup Error": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    },
+    "Handle GSheets Log Update Error": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    },
+    "Handle WooCommerce Update Error": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
     }
   },
   "active": true,
