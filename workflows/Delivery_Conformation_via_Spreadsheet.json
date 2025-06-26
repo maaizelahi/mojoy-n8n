@@ -13,10 +13,7 @@
       "name": "Webhook: Delivery Confirmation",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [
-        -1320,
-        380
-      ],
+      "position": [-1320, 380],
       "webhookId": "d4899d09-6863-47f9-bb20-314f140cd30a"
     },
     {
@@ -27,10 +24,7 @@
       "name": "Extract & Validate Form Data",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [
-        -1080,
-        380
-      ]
+      "position": [-1080, 380]
     },
     {
       "parameters": {
@@ -47,10 +41,7 @@
       "name": "Valid Inputs?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [
-        -860,
-        380
-      ]
+      "position": [-860, 380]
     },
     {
       "parameters": {
@@ -77,10 +68,7 @@
       "name": "GSheets: Look Up Order",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4,
-      "position": [
-        -640,
-        280
-      ],
+      "position": [-640, 280],
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "WouXmJ65J28IkkhO",
@@ -96,10 +84,7 @@
       "name": "Process Lookup & Verify OTP",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [
-        -400,
-        280
-      ]
+      "position": [-400, 280]
     },
     {
       "parameters": {
@@ -116,10 +101,7 @@
       "name": "Order Exists?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [
-        -180,
-        280
-      ]
+      "position": [-180, 280]
     },
     {
       "parameters": {
@@ -136,10 +118,7 @@
       "name": "OTP Matches?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [
-        40,
-        180
-      ]
+      "position": [40, 180]
     },
     {
       "parameters": {
@@ -156,17 +135,17 @@
           "cachedResultName": "Form Responses 1",
           "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Wqoo6mylPVXO1yV0vgb3hVAdEfq6l9uLj_nZ0Q-1FNo/edit#gid=1016877743"
         },
-        "lookupColumn": "Order ID", // Ensure this matches the column header in "Form Responses 1"
+        "lookupColumn": "Order ID",
         "lookupValue": "={{ $('Process Lookup & Verify OTP').item.json.orderId }}",
         "dataMode": "defineBelow",
         "fieldsUi": {
           "fields": [
             {
-              "columnName": "Status Message", // Ensure this matches
+              "columnName": "Status Message",
               "columnValue": "={{ $('OTP Matches?').item.json.otpMatches ? 'OTP Verified' : 'OTP Mismatch' }}"
             },
             {
-              "columnName": "Delivery Confirmation Timestamp", // New column for better audit
+              "columnName": "Delivery Confirmation Timestamp",
               "columnValue": "={{ $('Process Lookup & Verify OTP').item.json.deliveryTime }}"
             },
             {
@@ -180,17 +159,14 @@
           ]
         },
         "options": {
-            "valueInputMode": "USER_ENTERED"
+          "valueInputMode": "USER_ENTERED"
         }
       },
       "id": "9d1bd16a-e9b2-4f47-b2a6-25c8a1ee9d7e",
       "name": "GSheets: Update Form Response Log",
       "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4, // Upgraded
-      "position": [
-        260,
-        80 // True output of OTP Matches?
-      ],
+      "typeVersion": 4,
+      "position": [260, 80],
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "WouXmJ65J28IkkhO",
@@ -212,11 +188,8 @@
       "id": "1370d7b2-c55e-4383-8018-bb276b231b8e",
       "name": "WooCommerce: Update Order Status",
       "type": "n8n-nodes-base.wooCommerce",
-      "typeVersion": 1.2, // Check for latest version, using 1.2 as an example
-      "position": [
-        500,
-        80
-      ],
+      "typeVersion": 1.2,
+      "position": [500, 80],
       "credentials": {
         "wooCommerceApi": {
           "id": "EEm1POxfOqddFHn8",
@@ -232,10 +205,7 @@
       "name": "Success Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [
-        720,
-        80
-      ]
+      "position": [720, 80]
     },
     {
       "parameters": {
@@ -245,10 +215,7 @@
       "name": "OTP Mismatch Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [
-        260, // Positioned after "OTP Matches?" false output
-        280
-      ]
+      "position": [260, 280]
     },
     {
       "parameters": {
@@ -258,10 +225,7 @@
       "name": "Order Not Found Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [
-        -180, // Positioned after "Order Exists?" false output
-        480
-      ]
+      "position": [-180, 480]
     },
     {
       "parameters": {
@@ -271,26 +235,19 @@
       "name": "Invalid Input Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [
-        -860, // Positioned after "Valid Inputs?" false output
-        580
-      ]
+      "position": [-860, 580]
     },
     {
       "parameters": {
-        "data": "={{$json}}", // Responds with the JSON from the connected error/success node
+        "data": "={{$json}}",
         "options": {}
       },
       "id": "50d02e50-97dc-46ea-87b7-51c5b80e706d",
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [
-        940, // Positioned to collect all final responses
-        380
-      ]
+      "position": [940, 380]
     },
-    // --- Handler Nodes for Errors from GSheets/WooCommerce ---
     {
       "parameters": {
         "jsCode": "console.error(\"Error looking up order in Google Sheets:\", JSON.stringify($input.first().json));\nconst originalInput = $('Extract & Validate Form Data').first().json;\nreturn { json: { success: false, message: 'Error accessing order data. Please try again later.', errorType: 'GSHEETS_LOOKUP_FAILED', orderId: originalInput.orderId } };"
@@ -298,10 +255,7 @@
       "name": "Handle GSheets Lookup Error",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [
-        -640, // Near GSheets Look Up Order
-        80
-      ],
+      "position": [-640, 480],
       "id": "HANDLE_GSHEETS_LOOKUP_ERROR"
     },
     {
@@ -311,10 +265,7 @@
       "name": "Handle GSheets Log Update Error",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [
-        260, // Near GSheets Update Form Response
-        -20 // Error path
-      ],
+      "position": [260, -20],
       "id": "HANDLE_GSHEETS_LOG_ERROR"
     },
     {
@@ -324,10 +275,7 @@
       "name": "Handle WooCommerce Update Error",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [
-        500, // Near WooCommerce Update Order
-        -20 // Error path
-      ],
+      "position": [500, -20],
       "id": "HANDLE_WOOCOMMERCE_ERROR"
     },
     {
@@ -339,22 +287,22 @@
           "mode": "id"
         },
         "sheetName": {
-           "__rl": true,
+          "__rl": true,
           "value": "{{ $env.OTP_TRACKING_SHEET_NAME || 'Sheet1' }}",
           "mode": "list"
         },
         "lookupColumn": "orderId",
         "lookupValue": "={{ $('Process Lookup & Verify OTP').item.json.orderId }}",
-         "dataMode": "defineBelow",
+        "dataMode": "defineBelow",
         "fieldsUi": {
           "fields": [
             {
-              "columnName": "status", // Column in OTP Tracking Sheet
+              "columnName": "status",
               "columnValue": "={{ $('Process Lookup & Verify OTP').item.json.deliveryStatus }}"
             },
             {
               "columnName": "deliveryPersonName",
-               "columnValue": "={{ $('Process Lookup & Verify OTP').item.json.deliveryPersonName }}"
+              "columnValue": "={{ $('Process Lookup & Verify OTP').item.json.deliveryPersonName }}"
             },
             {
               "columnName": "deliveryNotes",
@@ -365,23 +313,20 @@
               "columnValue": "={{ $('Process Lookup & Verify OTP').item.json.deliveryTime }}"
             },
             {
-                "columnName": "otpVerificationStatus",
-                "columnValue": "Verified"
+              "columnName": "otpVerificationStatus",
+              "columnValue": "Verified"
             }
           ]
         },
         "options": {
-            "valueInputMode": "USER_ENTERED"
+          "valueInputMode": "USER_ENTERED"
         }
       },
       "id": "UPDATE_MAIN_TRACKING_SHEET_SUCCESS",
       "name": "GSheets: Update Main Tracking (Success)",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4,
-      "position": [
-        260, // After OTP Matches = TRUE, before GSheets Log
-        180
-      ],
+      "position": [260, 180],
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "WouXmJ65J28IkkhO",
@@ -396,10 +341,7 @@
       "name": "Handle Main Tracking Update Error (Success Path)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [
-        260, // Error path for UPDATE_MAIN_TRACKING_SHEET_SUCCESS
-        80
-      ],
+      "position": [260, 380],
       "id": "HANDLE_MAIN_TRACKING_UPDATE_ERROR_SUCCESS"
     }
   ],
@@ -438,7 +380,7 @@
         ],
         [
           {
-            "node": "Invalid Input Response", // FALSE output
+            "node": "Invalid Input Response",
             "type": "main",
             "index": 0
           }
@@ -455,21 +397,21 @@
           }
         ]
       ],
-      "error": [ // Error output
+      "error": [
         [
           {
             "node": "Handle GSheets Lookup Error",
-            "type": "main", // n8n error outputs are main type
+            "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Process Lookup & Verify OTP": { // This node now also handles "Order Not Found" logic internally
+    "Process Lookup & Verify OTP": {
       "main": [
         [
           {
-            "node": "Order Exists?", // This IF node will check the 'orderExists' flag from "Process Lookup & Verify OTP"
+            "node": "Order Exists?",
             "type": "main",
             "index": 0
           }
@@ -480,14 +422,14 @@
       "main": [
         [
           {
-            "node": "OTP Matches?", // TRUE output
+            "node": "OTP Matches?",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Order Not Found Response", // FALSE output
+            "node": "Order Not Found Response",
             "type": "main",
             "index": 0
           }
@@ -495,7 +437,7 @@
       ]
     },
     "OTP Matches?": {
-      "main": [ // TRUE output (OTP Matches)
+      "main": [
         [
           {
             "node": "GSheets: Update Main Tracking (Success)",
@@ -503,15 +445,12 @@
             "index": 0
           }
         ],
-        [ // FALSE output (OTP Mismatch)
+        [
           {
             "node": "OTP Mismatch Response",
             "type": "main",
             "index": 0
           }
-          // No direct connection to "GSheets: Update Form Response Log" for mismatch from here,
-          // as that sheet is for logging successful/failed attempts post-OTP check.
-          // An OTP Mismatch is a direct failure response.
         ]
       ]
     },
@@ -613,8 +552,8 @@
     "Handle GSheets Log Update Error": {
       "main": [
         [
-          { // Even if logging fails, try to update WooCommerce and respond success if Woo succeeds
-            "node": "WooCommerce: Update Order Status", // Or go directly to a modified success/error response
+          {
+            "node": "WooCommerce: Update Order Status",
             "type": "main",
             "index": 0
           }
@@ -633,35 +572,35 @@
       ]
     },
     "GSheets: Update Main Tracking (Success)": {
-        "main": [
-            [
-                {
-                    "node": "GSheets: Update Form Response Log",
-                    "type": "main",
-                    "index": 0
-                }
-            ]
-        ],
-        "error": [
-            [
-                {
-                    "node": "Handle Main Tracking Update Error (Success Path)",
-                    "type": "main",
-                    "index": 0
-                }
-            ]
+      "main": [
+        [
+          {
+            "node": "GSheets: Update Form Response Log",
+            "type": "main",
+            "index": 0
+          }
         ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Handle Main Tracking Update Error (Success Path)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Handle Main Tracking Update Error (Success Path)": {
-        "main": [
-             [
-                { // Still proceed to log to form responses sheet
-                    "node": "GSheets: Update Form Response Log",
-                    "type": "main",
-                    "index": 0
-                }
-            ]
+      "main": [
+        [
+          {
+            "node": "GSheets: Update Form Response Log",
+            "type": "main",
+            "index": 0
+          }
         ]
+      ]
     }
   },
   "active": true,
