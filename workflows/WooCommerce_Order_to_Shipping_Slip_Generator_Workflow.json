@@ -1,5 +1,5 @@
 {
-  "name": "Jule_WooCommerce_Order_to_Shipping_Slip_Generator_Workflow",
+  "name": "WooCommerce Order to Shipping Slip Generator Workflow",
   "nodes": [
     {
       "parameters": {
@@ -7,15 +7,29 @@
         "path": "6e2e45cf-e6b6-4466-8e2e-57938ea4cdbf",
         "options": {}
       },
-      "id": "151d7af9-619b-4f30-8759-3881cc685a11",
+      "id": "56bd0fe1-6d1a-4bc9-a76a-e22384b78307",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
       "position": [
-        -400,
-        100
+        -600,
+        80
       ],
       "webhookId": "6e2e45cf-e6b6-4466-8e2e-57938ea4cdbf"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Workflow Configuration Node\n// Define all static configuration values here.\n// Replace placeholder values with your actual configuration.\nconst items = $input.all(); \nfor (const item of items) {\n    if (!item.json.config) { \n        item.json.config = {\n            WOOCOMMERCE_BASE_URL: \"https://your-woocommerce-site.com\", \n            COMPANY_NAME: \"TATA 1MG HealthCare Solutions Private Limited\",\n            COMPANY_ADDRESS: \"Plot No.Cp.537, Transport Nagar, Krishna Nagar\",\n            COMPANY_CITY: \"Lucknow, Uttar Pradesh, 226023\",\n            COMPANY_PHONE: \"0124-41666666\",\n            COMPANY_EMAIL: \"care@1mg.com\",\n            GST_NUMBER: \"YOUR_GST_NUMBER_HERE_OR_BLANK\", \n            ARCHIVE_FOLDER_ID: \"YOUR_GOOGLE_DRIVE_ARCHIVE_FOLDER_ID\"\n        };\n    }\n}\nreturn items;",
+        "options": {}
+      },
+      "id": "workflow-config-node",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        80
+      ]
     },
     {
       "parameters": {
@@ -29,66 +43,72 @@
           ]
         }
       },
-      "id": "c38c4620-1041-4ef1-97f4-e5a63b5343ba",
+      "id": "861b2784-6785-4d0b-bdda-95ba735a2e4a",
       "name": "Check if Status is Processing",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
       "position": [
-        -180,
-        100
+        -200,
+        80
       ]
     },
     {
       "parameters": {
         "authentication": "basicAuth",
-        "url": "=https://your-woocommerce-site.com/wp-json/wc/v3/orders/{{ $json.id }}",
-        "options": {}
+        "url": "={{$items('workflow-config-node')[0].json.config.WOOCOMMERCE_BASE_URL}}/wp-json/wc/v3/orders/{{ $json.id }}",
+        "options": {
+          "timeout": 30000
+        },
+        "retryOnFail": true,
+        "retryCount": 3,
+        "retryDelay": 5000
       },
-      "id": "1a37505a-e6d5-4a79-a79b-746f4c4052ad",
+      "id": "888eb310-a5ce-4773-bbd6-b29d516f2208",
       "name": "Get Order Details",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
       "position": [
-        40,
+        0,
         0
       ],
       "credentials": {
         "httpBasicAuth": {
-          "id": "McuqrH0LRYOnfIPT",
-          "name": "Unnamed credential"
+          "id": "YOUR_WOOCOMMERCE_BASIC_AUTH_CREDENTIAL_ID",
+          "name": "WooCommerce Basic Auth"
         }
       }
     },
     {
       "parameters": {
-        "functionCode": "// Generate unique identifiers and date formats\nconst now = new Date();\nconst invDate = now.toLocaleString('en-US', { \n  day: '2-digit', \n  month: 'short', \n  year: 'numeric',\n  hour: '2-digit',\n  minute: '2-digit',\n  second: '2-digit',\n  hour12: false\n}).replace(',', '');\n\nconst orderDate = new Date($json.date_created);\nconst formattedOrderDate = orderDate.toLocaleString('en-US', { \n  day: '2-digit', \n  month: 'short', \n  year: 'numeric',\n  hour: '2-digit',\n  minute: '2-digit',\n  second: '2-digit',\n  hour12: false\n}).replace(',', '');\n\n// Generate a GST number (for demo)\nconst gstNumber = 'AFCD' + Math.floor(10000000 + Math.random() * 90000000) + 'C1ZH';\n\n// Create order ID\nconst orderId = 'PO' + $json.id.toString().padStart(12, '0');\n\n// Encode Order ID for use in URL\nconst encodedOrderId = encodeURIComponent(orderId);\n\n// Generate QR Code URL using quickchart.io\nconst qrCodeUrl = `https://quickchart.io/qr?text=${encodedOrderId}&size=70&margin=1`; // Adjusted size for A6\n\n// Generate Barcode URL using quickchart.io (Code 128)\nconst barcodeUrl = `https://quickchart.io/barcode?format=CODE128&text=${encodedOrderId}&height=50&barColor=black&background=white`; // Adjusted height\n\n// Format full address\nconst shippingAddress = $json.shipping;\nlet fullAddress = '';\nif (shippingAddress.first_name || shippingAddress.last_name) {\n  fullAddress += `${shippingAddress.first_name || ''} ${shippingAddress.last_name || ''}`;\n}\n\nlet addressLine = '';\nif (shippingAddress.address_1) {\n  addressLine += shippingAddress.address_1;\n}\nif (shippingAddress.address_2) {\n  addressLine += `, ${shippingAddress.address_2}`;\n}\nif (addressLine) {\n  fullAddress += `\\n${addressLine}`;\n}\n\nlet cityStatePostcode = '';\nif (shippingAddress.city) {\n  cityStatePostcode += shippingAddress.city;\n}\nif (shippingAddress.state) {\n  if (cityStatePostcode) cityStatePostcode += ', ';\n  cityStatePostcode += shippingAddress.state;\n}\nif (shippingAddress.postcode) {\n  fullAddress += `\\n${cityStatePostcode}, ${shippingAddress.postcode}`;\n}\nelse if (cityStatePostcode) {\n  fullAddress += `\\n${cityStatePostcode}`;\n}\n\nif (shippingAddress.country) {\n  fullAddress += `\\n${shippingAddress.country}`;\n}\n\nconst isChilledItem = $json.line_items.some(item => {\n  // Check product metadata or categories to determine if it's a cold item\n  // This is just a sample condition - replace with your actual logic\n  return item.name.toLowerCase().includes('cold') || \n         item.name.toLowerCase().includes('chilled') || \n         item.name.toLowerCase().includes('frozen');\n});\n\nconst deliveryType = isChilledItem ? 'COLD' : 'NORMAL';\nconst deliveryMode = $json.shipping_lines && $json.shipping_lines.length > 0 && \n                  $json.shipping_lines[0].method_id === 'local_pickup' ? 'Pickup' : 'Home';\n\nconst companyInfo = {\n  name: 'TATA 1MG HealthCare Solutions Private Limited',\n  address: 'Plot No.Cp.537, Transport Nagar, Krishna Nagar',\n  city: 'Lucknow, Uttar Pradesh, 226023',\n  phone: '0124-41666666',\n  email: 'care@1mg.com'\n};\n\n// Calculate amount to be collected for COD orders\nconst isCOD = $json.payment_method === 'cod';\nconst amountToCollect = isCOD ? parseFloat($json.total) : 0.00;\n\n// Generate HTML for the shipping slip\nconst htmlContent = `\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Shipping Slip</title>\n    <style>\n        @page {\n            size: 10cm 15cm; /* A6 size */\n            margin: 0;\n        }\n        body {\n            font-family: Arial, sans-serif;\n            margin: 0;\n            padding: 0;\n            font-size: 10px;\n            width: 10cm;\n            height: 15cm;\n            box-sizing: border-box;\n        }\n        .container {\n            width: 100%;\n            height: 100%;\n            border: 1px solid #000;\n            display: flex;\n            flex-direction: column;\n        }\n        .header {\n            display: flex;\n            justify-content: space-between;\n            border-bottom: 1px solid #000;\n            padding: 5px;\n        }\n        .header-left {\n            font-weight: bold;\n        }\n        .header-right {\n            border: 1px solid #000;\n            padding: 3px;\n            text-align: center;\n        }\n        .cash-section {\n            border-bottom: 1px solid #000;\n            padding: 5px;\n            font-weight: bold;\n        }\n        .order-id-section {\n            display: flex;\n            border-bottom: 1px solid #000;\n            padding: 5px;\n            align-items: center;\n        }\n        .qr-code-img {\n            width: 2.5cm; /* Approx 25% of 10cm, adjusted for padding */\n            height: 2.5cm;\n            margin-right: 5px;\n        }\n        .order-id {\n            flex-grow: 1;\n            display: flex;\n            flex-direction: column;\n            justify-content: center;\n        }\n        .order-id h2 {\n            margin: 0;\n            font-size: 12px;\n        }\n        .order-id p {\n            margin: 3px 0;\n            font-size: 14px;\n            font-weight: bold;\n        }\n        .delivery-section {\n            border-bottom: 1px solid #000;\n            padding: 5px;\n        }\n        .delivery-section h2 {\n            margin: 0 0 5px 0;\n            font-size: 12px;\n            text-align: center;\n        }\n        .awb-section {\n            border-bottom: 1px solid #000;\n            padding: 5px;\n            text-align: center;\n        }\n        .awb-section h2 {\n            margin: 0 0 5px 0;\n            font-size: 12px;\n        }\n        .barcode-img {\n            width: 8cm; /* Adjust as needed */\n            height: 1.5cm; /* Adjust based on barcode aspect ratio */\n            display: block;\n            margin: 5px auto;\n        }\n        .company-section {\n            padding: 5px;\n            font-size: 9px;\n            border-bottom: 1px solid #000; /* Added for structure */\n        }\n        .stamp-section {\n            text-align: center;\n            padding-top: 5px; /* Add some space */\n            flex-grow: 1; /* Allow this section to take remaining space */\n            display: flex;\n            flex-direction: column;\n            justify-content: center;\n        }\n        .stamp-item {\n            display: inline-block;\n            border: 3px solid;\n            padding: 5px 10px;\n            border-radius: 50%;\n            transform: rotate(-15deg);\n            font-weight: bold;\n            font-size: 16px;\n            margin: 0 10px;\n        }\n        .cold {\n            color: purple;\n            border-color: purple;\n        }\n        .paid {\n            color: teal;\n            border-color: teal;\n        }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <div class=\"header\">\n            <div class=\"header-left\">\n                <p>ESSENTIAL SERVICES</p>\n                <p>INV Date: ${invDate}</p>\n                <p>GST No: ${gstNumber}</p>\n                <p>Order Date: ${formattedOrderDate}</p>\n            </div>\n            <div class=\"header-right\">\n                <p>1MC(one_day_delivery)</p>\n                <p>${deliveryType}</p>\n                <p>${deliveryMode}</p>\n            </div>\n        </div>\n        \n        <div class=\"cash-section\">\n            <p>${isCOD ? 'CASH ON DELIVERY (COD) | Amount To Be Collected: ' + amountToCollect.toFixed(2) : 'PREPAID | Amount Paid Online'}</p>\n        </div>\n        \n        <div class=\"order-id-section\">\n            <img src=\"${qrCodeUrl}\" alt=\"QR Code for Order ${orderId}\" class=\"qr-code-img\">\n            <div class=\"order-id\">\n                <h2>ORDER ID</h2>\n                <p>${orderId}</p>\n            </div>\n        </div>\n        \n        <div class=\"delivery-section\">\n            <h2>DELIVER TO</h2>\n            <p><strong>${shippingAddress.first_name || ''} ${shippingAddress.last_name || ''}</strong></p>\n            <p>${addressLine}</p>\n            <p>${shippingAddress.city || ''}, ${shippingAddress.state || ''}, ${shippingAddress.country || ''}</p>\n            <p>Locality:</p>\n            <p>${shippingAddress.city || ''} - ${shippingAddress.postcode || ''}</p>\n        </div>\n        \n        <div class=\"awb-section\">\n            <h2>AWB No.</h2>\n            <div>\n                <img src=\"${barcodeUrl}\" alt=\"Barcode for Order ${orderId}\" class=\"barcode-img\">\n                <p>${orderId}</p>\n            </div>\n        </div>\n        \n        <div class=\"company-section\">\n            <p><strong>${companyInfo.name}</strong></p>\n            <p>${companyInfo.address}, ${companyInfo.city}</p>\n            <p>ph: ${companyInfo.phone} email id: ${companyInfo.email}</p>\n        </div>\n        \n        <div class=\"stamp-section\">\n            <span class=\"stamp-item cold\">COLD</span>\n            <span class=\"stamp-item paid\">${isCOD ? 'COD' : 'PAID'}</span>\n        </div>\n    </div>\n</body>\n</html>\n`;\n\nreturn {\n  orderId,\n  customerName: `${shippingAddress.first_name || ''} ${shippingAddress.last_name || ''}`,\n  htmlContent,\n  orderData: $json,\n  deliveryType,\n  isCOD,\n  amountToCollect: amountToCollect.toFixed(2)\n};"
+        "functionCode": "const timeStamp = () => new Date().toISOString();\nconsole.log(`[${timeStamp()}] Prepare Shipping Data: Start`);\n\ntry {\n  // Validate incoming data ($json is the output of 'Get Order Details')\n  // The $json object here should also contain $json.config from the \"Workflow Configuration\" node\n  if (!$json || !$json.id || !$json.number || !$json.shipping || !$json.line_items || !$json.line_items.length || !$json.config) {\n    const errorMsg = \"Missing critical order data or workflow configuration.\";\n    const errorInput = { orderId: $json && $json.id, orderNumber: $json && $json.number, configPresent: !!($json && $json.config), fullInput: $json };\n    console.error(`[${timeStamp()}] Prepare Shipping Data: Error - ${errorMsg}`, errorInput);\n    return { \n        json: { \n            isErrorCondition: true, \n            errorNode: \"Prepare Shipping Data\", \n            errorMessage: errorMsg, \n            errorDetails: \"Input validation failed.\", \n            errorInputOrderId: $json && $json.id, \n            errorInputOrderNumber: $json && $json.number, \n            errorFullInput: $json \n        }\n    }; \n  }\n  console.log(`[${timeStamp()}] Prepare Shipping Data: Input data validated for Order ID: ${$json.id}, Order Number: ${$json.number}`);\n\n  const config = $json.config; // Config object from workflow-config-node\n\n  // Generate unique identifiers and date formats\n  const now = new Date();\n  const invDate = now.toLocaleString('en-US', { \n    day: '2-digit', \n    month: 'short', \n    year: 'numeric',\n    hour: '2-digit',\n    minute: '2-digit',\n    second: '2-digit',\n    hour12: false\n  }).replace(',', '');\n\n  const orderDate = new Date($json.date_created);\n  const formattedOrderDate = orderDate.toLocaleString('en-US', { \n    day: '2-digit', \n    month: 'short', \n    year: 'numeric',\n    hour: '2-digit',\n    minute: '2-digit',\n    second: '2-digit',\n    hour12: false\n  }).replace(',', '');\n\n  // Use GST number from config\n  const gstNumber = config.GST_NUMBER || ''; // Default to blank if not in config\n\n  // Use WooCommerce native order number, optionally with a prefix\n  const orderId = `WC-${$json.number}`; \n  console.log(`[${timeStamp()}] Prepare Shipping Data: Generated display Order ID: ${orderId}`);\n\n  // Encode Order ID for use in URL\n  const encodedOrderId = encodeURIComponent(orderId);\n\n  // Generate QR Code URL using quickchart.io\n  const qrCodeUrl = `https://quickchart.io/qr?text=${encodedOrderId}&size=70&margin=1`;\n\n  // Generate Barcode URL using quickchart.io (Code 128)\n  const barcodeUrl = `https://quickchart.io/barcode?format=CODE128&text=${encodedOrderId}&height=50&barColor=black&background=white`;\n\n  // Improved Address Formatting Logic (already applied in previous steps, verified)\n  const sa = $json.shipping; \n  let deliveryAddressHtml = `<p><strong>${((sa.first_name || '') + ' ' + (sa.last_name || '')).trim()}</strong></p>`;\n  if (sa.company) { deliveryAddressHtml += `<p>${sa.company.replace(/\\n/g, '<br>')}</p>`; }\n  if (sa.address_1) { deliveryAddressHtml += `<p>${sa.address_1.replace(/\\n/g, '<br>')}</p>`; }\n  if (sa.address_2) { deliveryAddressHtml += `<p>${sa.address_2.replace(/\\n/g, '<br>')}</p>`; }\n  let cityLineParts = [];\n  if (sa.city) cityLineParts.push(sa.city);\n  if (sa.state) cityLineParts.push(sa.state);\n  let cityStateString = cityLineParts.join(', ');\n  let fullCityStatePostcodeLine = cityStateString;\n  if (sa.postcode) { fullCityStatePostcodeLine += (fullCityStatePostcodeLine ? ' - ' : '') + sa.postcode; }\n  if (fullCityStatePostcodeLine) { deliveryAddressHtml += `<p>${fullCityStatePostcodeLine}</p>`; }\n  if (sa.country) { deliveryAddressHtml += `<p>${sa.country}</p>`; }\n  if ($json.billing && $json.billing.phone) { deliveryAddressHtml += `<p>Tel: ${$json.billing.phone}</p>`; } \n  else if (sa.phone) { deliveryAddressHtml += `<p>Tel: ${sa.phone}</p>`; }\n  console.log(`[${timeStamp()}] Prepare Shipping Data: Formatted address for Order ID: ${orderId}`);\n  \n  const isChilledItem = $json.line_items.some(item => {\n    const itemNameLower = item.name ? item.name.toLowerCase() : '';\n    return itemNameLower.includes('cold') || itemNameLower.includes('chilled') || itemNameLower.includes('frozen');\n  });\n\n  const deliveryType = isChilledItem ? 'COLD' : 'NORMAL';\n  const deliveryMode = $json.shipping_lines && $json.shipping_lines.length > 0 && \n                    $json.shipping_lines[0].method_id === 'local_pickup' ? 'Pickup' : 'Home';\n\n  // Company Info from config\n  const companyInfo = {\n    name: config.COMPANY_NAME || 'Default Company Name',\n    address: config.COMPANY_ADDRESS || 'Default Company Address',\n    city: config.COMPANY_CITY || 'Default City',\n    phone: config.COMPANY_PHONE || 'Default Phone',\n    email: config.COMPANY_EMAIL || 'Default Email'\n  };\n  console.log(`[${timeStamp()}] Prepare Shipping Data: Using company info for Order ID: ${orderId}`);\n\n  const isCOD = $json.payment_method === 'cod';\n  const amountToCollect = isCOD ? parseFloat($json.total) : 0.00;\n\n  // HTML content (already updated to use deliveryAddressHtml)\n  const htmlContent = `\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Shipping Slip - ${orderId}</title>\n    <style>\n        @page {\n            size: 10cm 15cm; /* A6 size */\n            margin: 0;\n        }\n        body {\n            font-family: Arial, sans-serif;\n            margin: 0;\n            padding: 0;\n            font-size: 10px;\n            width: 10cm;\n            height: 15cm;\n            box-sizing: border-box;\n        }\n        .container {\n            width: 100%;\n            height: 100%;\n            border: 1px solid #000;\n            display: flex;\n            flex-direction: column;\n        }\n        .header {\n            display: flex;\n            justify-content: space-between;\n            border-bottom: 1px solid #000;\n            padding: 5px;\n        }\n        .header-left {\n            font-weight: bold;\n        }\n        .header-right {\n            border: 1px solid #000;\n            padding: 3px;\n            text-align: center;\n        }\n        .cash-section {\n            border-bottom: 1px solid #000;\n            padding: 5px;\n            font-weight: bold;\n        }\n        .order-id-section {\n            display: flex;\n            border-bottom: 1px solid #000;\n            padding: 5px;\n            align-items: center;\n        }\n        .qr-code-img {\n            width: 2.5cm; \n            height: 2.5cm;\n            margin-right: 5px;\n        }\n        .order-id {\n            flex-grow: 1;\n            display: flex;\n            flex-direction: column;\n            justify-content: center;\n        }\n        .order-id h2 {\n            margin: 0;\n            font-size: 12px;\n        }\n        .order-id p {\n            margin: 3px 0;\n            font-size: 14px;\n            font-weight: bold;\n        }\n        .delivery-section {\n            border-bottom: 1px solid #000;\n            padding: 5px;\n        }\n        .delivery-section h2 {\n            margin: 0 0 5px 0;\n            font-size: 12px;\n            text-align: center;\n        }\n        .awb-section {\n            border-bottom: 1px solid #000;\n            padding: 5px;\n            text-align: center;\n        }\n        .awb-section h2 {\n            margin: 0 0 5px 0;\n            font-size: 12px;\n        }\n        .barcode-img {\n            width: 8cm; \n            height: 1.5cm; \n            display: block;\n            margin: 5px auto;\n        }\n        .company-section {\n            padding: 5px;\n            font-size: 9px;\n            border-bottom: 1px solid #000; \n        }\n        .stamp-section {\n            text-align: center;\n            padding-top: 5px; \n            flex-grow: 1; \n            display: flex;\n            flex-direction: column;\n            justify-content: center;\n        }\n        .stamp-item {\n            display: inline-block;\n            border: 3px solid;\n            padding: 5px 10px;\n            border-radius: 50%;\n            transform: rotate(-15deg);\n            font-weight: bold;\n            font-size: 16px;\n            margin: 0 10px;\n        }\n        .cold {\n            color: purple;\n            border-color: purple;\n        }\n        .paid {\n            color: teal;\n            border-color: teal;\n        }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <div class=\"header\">\n            <div class=\"header-left\">\n                <p>ESSENTIAL SERVICES</p>\n                <p>INV Date: ${invDate}</p>\n                <p>GST No: ${gstNumber}</p>\n                <p>Order Date: ${formattedOrderDate}</p>\n            </div>\n            <div class=\"header-right\">\n                <p>1MC(one_day_delivery)</p>\n                <p>${deliveryType}</p>\n                <p>${deliveryMode}</p>\n            </div>\n        </div>\n        \n        <div class=\"cash-section\">\n            <p>${isCOD ? 'CASH ON DELIVERY (COD) | Amount To Be Collected: ' + amountToCollect.toFixed(2) : 'PREPAID | Amount Paid Online'}</p>\n        </div>\n        \n        <div class=\"order-id-section\">\n            <img src=\"${qrCodeUrl}\" alt=\"QR Code for Order ${orderId}\" class=\"qr-code-img\">\n            <div class=\"order-id\">\n                <h2>ORDER ID</h2>\n                <p>${orderId}</p>\n            </div>\n        </div>\n        \n        <div class=\"delivery-section\">\n            <h2>DELIVER TO</h2>\n            ${deliveryAddressHtml}\n        </div>\n        \n        <div class=\"awb-section\">\n            <h2>AWB No.</h2>\n            <div>\n                <img src=\"${barcodeUrl}\" alt=\"Barcode for Order ${orderId}\" class=\"barcode-img\">\n                <p>${orderId}</p>\n            </div>\n        </div>\n        \n        <div class=\"company-section\">\n            <p><strong>${companyInfo.name}</strong></p>\n            <p>${companyInfo.address}, ${companyInfo.city}</p>\n            <p>ph: ${companyInfo.phone} email id: ${companyInfo.email}</p>\n        </div>\n        \n        <div class=\"stamp-section\">\n            ${isChilledItem ? '<span class=\"stamp-item cold\">COLD</span>' : ''}\n            <span class=\"stamp-item paid\">${isCOD ? 'COD' : 'PAID'}</span>\n        </div>\n    </div>\n</body>\n</html>\n`;\n  console.log(`[${timeStamp()}] Prepare Shipping Data: HTML content generated for Order ID: ${orderId}`);\n\n  return {\n    json: { // Ensure all output is under json property\n        orderId: orderId, \n        originalOrderId: $json.id, \n        originalOrderNumber: $json.number, \n        customerName: `${sa.first_name || ''} ${sa.last_name || ''}`.trim(), \n        htmlContent: htmlContent,\n        orderData: $json, // This includes the original $json and the $json.config\n        deliveryType: deliveryType,\n        isCOD: isCOD,\n        amountToCollect: amountToCollect.toFixed(2)\n        // config is already part of $json.orderData.config if needed by subsequent nodes\n    }\n  };\n\n} catch (error) {\n  console.error(`[${timeStamp()}] Prepare Shipping Data: CRITICAL ERROR for Order ID: ${$json && $json.id}, Order Number: ${$json && $json.number}. Details:`, error.message, error.stack);\n  return { \n      json: {\n          isErrorCondition: true, \n          errorNode: \"Prepare Shipping Data\", \n          errorMessage: error.message, \n          errorDetails: error.stack, \n          errorInputOrderId: $json && $json.id, \n          errorInputOrderNumber: $json && $json.number, \n          errorFullInput: $json \n      }\n  };\n}\n"
       },
-      "id": "0768e084-1c86-4e62-807b-ffa641396e1f",
+      "id": "34517cb0-0bc8-435d-b652-2b95bb85e61d",
       "name": "Prepare Shipping Data",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
       "position": [
-        260,
+        200,
         0
       ]
     },
     {
       "parameters": {},
-      "id": "73810488-f463-4fae-9d67-dacbc23a52b1",
+      "id": "9c364e36-7be1-4054-8b06-de6a31be24ba",
       "name": "No Operation",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        40,
-        200
+        0,
+        180
       ]
     },
     {
       "parameters": {
         "url": "https://tools.mojoy.in/html-to-pdf",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpBasicAuth",
+        "authentication": "basicAuth",
         "sendBody": true,
+        "bodyContentType": "json",
+        "jsonParameters": true,
         "bodyParameters": {
           "parameters": [
             {
@@ -98,55 +118,69 @@
           ]
         },
         "options": {
+          "responseFormat": "file",
+          "fullResponse": false,
+          "splitIntoBatches": false,
           "timeout": 30000
-        }
+        },
+        "retryOnFail": true,
+        "retryCount": 3,
+        "retryDelay": 5000
       },
-      "id": "ebec5c4d-5204-4f55-96a3-b58416b6fd2c",
+      "id": "954162ba-becf-4405-b452-cf3872336fcf",
       "name": "HTML to PDF Converter",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
       "position": [
-        480,
+        400,
         0
       ],
       "credentials": {
         "httpBasicAuth": {
-          "id": "sKmJBF2dQo5uRLhe",
-          "name": "Mojoy HTML to PDF Service"
+          "id": "YOUR_N8N_BASIC_AUTH_CREDENTIAL_ID",
+          "name": "HTTP Basic Auth credentials"
         }
       }
     },
     {
       "parameters": {
         "authentication": "oAuth2",
-        "binaryData": true,
-        "options": {}
+        "resource": "file",
+        "operation": "upload",
+        "binaryPropertyName": "data",
+        "destinationType": "folderPath",
+        "destinationPath": "=ShippingSlips_Batches/{{new Date().toISOString().split('T')[0]}}/IndividualSlips/",
+        "fileName": "={{ 'shipping-slip-' + $json.orderId + '.pdf' }}",
+        "options": {
+          "createMissingFolders": true,
+          "updateIfExists": false
+        }
       },
       "name": "Upload PDF to Google Drive",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 1,
       "position": [
-        700,
-        0
+        600,
+        -80
       ],
-      "id": "90cbbc5f-e3e5-4874-aada-fa2dbd5dde93",
+      "id": "gdrive-upload-node",
       "credentials": {
         "googleDriveOAuth2Api": {
-          "id": "LlLEMuVxoDrQ27s1",
-          "name": "Mojoy Shop Drive Account"
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Drive Credentials Placeholder"
         }
       }
     },
     {
       "parameters": {
-        "functionCode": "// Add to daily batch file (now with Google Drive ID)\nconst fs = require('fs');\nconst path = require('path');\n\n// Create today's date in YYYY-MM-DD format\nconst today = new Date().toISOString().split('T')[0];\n\n// Path to the local batch control file\nconst shippingSlipsDir = './shipping_slips'; // Local directory for batch control files\nconst batchFilePath = path.join(shippingSlipsDir, `batch_gdrive_ids_${today}.txt`);\n\n// $json.id here is the Google Drive file ID from the 'Upload PDF to Google Drive' node\n// $json.name is the filename on Google Drive from the 'Upload PDF to Google Drive' node\n// $json.orderId is the 'POxxxx' formatted ID from 'Prepare Shipping Data' (passed through previous nodes)\n// $json.orderData is the original order data from 'Prepare Shipping Data' (passed through previous nodes)\nconst googleDriveFileId = $json.id; \nconst googleDriveFileName = $json.name; // Capture the filename from Google Drive upload output\nconst slipOrderId = $json.orderId; \nconst orderData = $json.orderData;\n\nif (!googleDriveFileId) {\n  console.error('Google Drive File ID is missing in the input for Add to Batch node. Input JSON:', JSON.stringify($json));\n  return {\n    success: false,\n    error: 'Google Drive File ID missing from previous step.',\n    inputJson: $json\n  };\n}\nif (!googleDriveFileName) {\n  console.warn('Google Drive File Name (from $json.name) is missing in the input for Add to Batch node. Input JSON:', JSON.stringify($json));\n  // Continue, but metadata might be incomplete. The filename might be reconstructed from slipOrderId if necessary.\n}\n\n\nif (!slipOrderId || !orderData || !orderData.id) {\n    console.error(\"Critical data (slipOrderId or orderData.id) missing in input for 'Add to Batch'. Input JSON:\", JSON.stringify($json));\n}\n\ntry {\n  if (!fs.existsSync(shippingSlipsDir)) {\n    fs.mkdirSync(shippingSlipsDir, { recursive: true });\n  }\n  \n  fs.appendFileSync(batchFilePath, googleDriveFileId + '\\n');\n  \n  const countFilePath = path.join(shippingSlipsDir, `count_${today}.txt`);\n  let count = 1;\n  if (fs.existsSync(countFilePath)) {\n    const currentCount = parseInt(fs.readFileSync(countFilePath, 'utf8'));\n    if (!isNaN(currentCount)) {\n      count = currentCount + 1;\n    }\n  }\n  fs.writeFileSync(countFilePath, count.toString());\n  \n  return {\n    success: true,\n    batchFile: batchFilePath, // Path to the text file listing Google Drive IDs\n    processedGoogleDriveFileId: googleDriveFileId,\n    googleDriveFileName: googleDriveFileName, // Pass the filename from GDrive\n    totalSlipsToday: count,\n    message: `Added Google Drive File ID ${googleDriveFileId} (Filename: ${googleDriveFileName}) for order ${slipOrderId} to batch file ${batchFilePath}. Total slips today: ${count}.`,\n    slipOrderId: slipOrderId, \n    orderData: orderData \n  };\n} catch (error) {\n  console.error('Error in Add to Batch node (Google Drive version):', error);\n  return {\n    success: false,\n    error: error.message,\n    errorStack: error.stack,\n    inputJson: $json\n  };\n}"
+        "functionCode": "const timeStamp = () => new Date().toISOString();\nconsole.log(`[${timeStamp()}] Prepare Batch Control Data: Start`);\n\ntry {\n    // Assumes input $json contains fields from the Merge node:\n    // uploadedPdfId, uploadedPdfName, displayOrderId, customerName, originalOrderData, batchFileData\n    const uploadedPdfId = $json.uploadedPdfId; \n    const uploadedPdfName = $json.uploadedPdfName;\n    const displayOrderId = $json.displayOrderId; // This is WC-NUMBER\n    const customerName = $json.customerName;\n    const originalOrderData = $json.originalOrderData; // Full order data from WooCommerce\n    const batchFileBinaryData = $json.batchFileData ? $json.batchFileData.data : null;\n\n    let batchEntries = [];\n\n    if (batchFileBinaryData) {\n        console.log(`[${timeStamp()}] Prepare Batch Control Data: Existing batch file found. Parsing...`);\n        const batchFileJsonString = Buffer.from(batchFileBinaryData, 'base64').toString('utf8');\n        if (batchFileJsonString) {\n            try {\n                batchEntries = JSON.parse(batchFileJsonString);\n                if (!Array.isArray(batchEntries)) {\n                    console.warn(`[${timeStamp()}] Prepare Batch Control Data: Batch file content was not an array. Re-initializing.`);\n                    batchEntries = [];\n                }\n            } catch (parseError) {\n                console.error(`[${timeStamp()}] Prepare Batch Control Data: Error parsing existing batch JSON. Content: '${batchFileJsonString}'. Error:`, parseError);\n                batchEntries = []; // Start fresh if parsing fails\n            }\n        }\n        console.log(`[${timeStamp()}] Prepare Batch Control Data: Parsed ${batchEntries.length} existing entries.`);\n    } else {\n        console.log(`[${timeStamp()}] Prepare Batch Control Data: No existing batch file found or content was empty. Initializing new batch.`);\n    }\n\n    const newEntry = {\n        gdrivePdfId: uploadedPdfId,\n        gdrivePdfName: uploadedPdfName,\n        orderId: displayOrderId, // WC-NUMBER\n        wooCommerceOrderId: originalOrderData.id,\n        wooCommerceOrderNumber: originalOrderData.number,\n        customerName: customerName,\n        processedAt: timeStamp()\n    };\n    batchEntries.push(newEntry);\n    console.log(`[${timeStamp()}] Prepare Batch Control Data: Added new entry for Order ID ${displayOrderId}. Total entries: ${batchEntries.length}`);\n\n    const updatedBatchJsonString = JSON.stringify(batchEntries, null, 2);\n    const today = new Date().toISOString().split('T')[0];\n    const batchControlFileName = `batch_control_${today}.json`;\n    const batchControlGdriveFolderPath = `ShippingSlips_Batches/${today}/BatchControl/`;\n\n    return {\n        json: {\n            batchJsonToUpload: updatedBatchJsonString,\n            batchControlFileName: batchControlFileName,\n            batchControlGdriveFolderPath: batchControlGdriveFolderPath,\n            processedGoogleDriveFileId: uploadedPdfId,\n            googleDriveFileName: uploadedPdfName,\n            batchFileIdentifier: `${batchControlGdriveFolderPath}${batchControlFileName}`,\n            orderData: originalOrderData\n        }\n    };\n\n} catch (error) {\n    console.error(`[${timeStamp()}] Prepare Batch Control Data: CRITICAL ERROR. Details:`, error.message, error.stack, JSON.stringify($json));\n    return { \n        json: {\n            isErrorCondition: true,\n            errorNode: \"Prepare Batch Control Data\",\n            errorMessage: error.message,\n            errorDetails: error.stack,\n            errorFullInput: $json // $json is the input to this function node\n        }\n    };\n}"
       },
-      "id": "4d6a07e6-a36a-413b-b4fa-5d03119b8086",
-      "name": "Add Google Drive ID to Batch File",
+      "id": "ae908f25-dfff-483b-b36b-fc096f1a9403",
+      "name": "Prepare Batch Control Data",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
       "position": [
-        920,
+        1200,
         0
       ]
     },
@@ -155,34 +189,45 @@
         "resource": "order",
         "operation": "update",
         "orderId": "={{ $json.orderData.id }}",
-        "updateFields": {},
-        "billingUi": {},
-        "couponLinesUi": {},
-        "feeLinesUi": {},
-        "lineItemsUi": {},
-        "metadataUi": {
-          "metadataValues": [
-            {
-              "key": "",
-              "value": ""
-            }
-          ]
-        },
-        "shippingUi": {},
-        "shippingLinesUi": {}
+        "additionalFields": {
+          "metadataUi": {
+            "keyValuePair": [
+              {
+                "key": "shipping_slip_generated",
+                "value": true
+              },
+              {
+                "key": "shipping_slip_filename",
+                "value": "={{ $json.googleDriveFileName }}"
+              },
+              {
+                "key": "shipping_slip_gdrive_id",
+                "value": "={{ $json.processedGoogleDriveFileId }}"
+              },
+              {
+                "key": "shipping_slip_batch_file_path",
+                "value": "={{ $json.batchFileIdentifier }}"
+              },
+              {
+                "key": "shipping_slip_generated_at",
+                "value": "={{ new Date().toISOString() }}"
+              }
+            ]
+          }
+        }
       },
-      "id": "ae7bfc6a-d82e-4fd7-b148-8279077e60d1",
+      "id": "331e8e4b-671f-4587-9436-70619454ed19",
       "name": "Update Order Metadata",
       "type": "n8n-nodes-base.wooCommerce",
       "typeVersion": 1,
       "position": [
-        1140,
+        1600,
         0
       ],
       "credentials": {
         "wooCommerceApi": {
-          "id": "EEm1POxfOqddFHn8",
-          "name": "WooCommerce account"
+          "id": "YOUR_WOOCOMMERCE_CREDENTIAL_ID",
+          "name": "WooCommerce credentials"
         }
       }
     },
@@ -196,30 +241,31 @@
           ]
         }
       },
-      "id": "506f8dd5-9293-46b4-87d3-cc339ecba6f8",
+      "id": "c8484b91-cb15-482a-a847-13d29483f403",
       "name": "Schedule Trigger for Batch Processing",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
       "position": [
-        -400,
-        460
+        200,
+        180
       ]
     },
     {
       "parameters": {
-        "functionCode": "// Step 1: Read the batch file containing Google Drive IDs\nconst fs = require('fs');\nconst path = require('path');\n\nconst today = new Date().toISOString().split('T')[0];\nconst shippingSlipsDir = './shipping_slips'; // Local directory for batch control files\nconst batchFilePath = path.join(shippingSlipsDir, `batch_gdrive_ids_${today}.txt`);\n\nlet googleDriveFileIds = [];\nlet statusMessage = '';\n\nif (!fs.existsSync(batchFilePath)) {\n  statusMessage = 'No batch file found for today.';\n  return [{ json: { status: statusMessage, processed: false, batchFilePath, googleDriveFileIds } }];\n}\n\nconst fileContent = fs.readFileSync(batchFilePath, 'utf8').trim();\nif (fileContent === '') {\n  statusMessage = 'Batch file is empty.';\n  return [{ json: { status: statusMessage, processed: false, batchFilePath, googleDriveFileIds } }];\n}\n\ngoogleDriveFileIds = fileContent.split('\\n').filter(id => id.trim() !== '');\n\nif (googleDriveFileIds.length === 0) {\n  statusMessage = 'No Google Drive File IDs found in batch file.';\n  return [{ json: { status: statusMessage, processed: false, batchFilePath, googleDriveFileIds } }];\n}\n\n// Return each ID as a separate item for looping\nreturn googleDriveFileIds.map(id => ({ \n  json: { \n    googleDriveFileId: id,\n    today: today, // Pass along for consistent naming\n    batchFilePath: batchFilePath // Pass along for potential cleanup later\n  } \n}));\n"
+        "functionCode": "const timeStamp = () => new Date().toISOString();\nconsole.log(`[${timeStamp()}] Parse Batch Control JSON: Start`);\n\n// This node now expects the JSON content of the batch control file as a string,\n// or binary data that needs conversion, from a preceding Google Drive Download node.\n// Let's assume the GDrive download node output is $json (if it's the first item)\n// and its binary data is in $json.data (base64).\n\ntry {\n    const batchFileBinaryData = $json.data; // From GDrive Download node\n\n    if (!batchFileBinaryData) {\n        const msg = `[${timeStamp()}] Parse Batch Control JSON: No batch control file data provided from previous step. Ending.`;\n        console.log(msg);\n        return [{ json: { status: msg, processed: false, itemsToProcess: [] } }]; // Return one item indicating no processing\n    }\n\n    const batchFileJsonString = Buffer.from(batchFileBinaryData, 'base64').toString('utf8');\n    if (!batchFileJsonString.trim()) {\n        const msg = `[${timeStamp()}] Parse Batch Control JSON: Batch control file is empty. Ending.`;\n        console.log(msg);\n        return [{ json: { status: msg, processed: false, itemsToProcess: [] } }];\n    }\n\n    let batchEntries = [];\n    try {\n        batchEntries = JSON.parse(batchFileJsonString);\n    } catch (e) {\n        const msg = `[${timeStamp()}] Parse Batch Control JSON: Error parsing JSON from batch control file. Error: ${e.message}. Content: ${batchFileJsonString}`;\n        console.error(msg);\n        return [{ \n            json: { \n                isErrorCondition: true, \n                errorNode: \"Parse Batch Control JSON\", \n                errorMessage: `Error parsing JSON from batch control file: ${e.message}`,\n                errorDetails: `Content: ${batchFileJsonString.substring(0, 500)}...`, // Include part of content for debugging\n                errorFullInput: $json // The item from GDrive Download node\n            }\n        }];\n    }\n\n    if (!Array.isArray(batchEntries) || batchEntries.length === 0) {\n        const msg = `[${timeStamp()}] Parse Batch Control JSON: No valid entries found in batch control file or not an array. Length: ${batchEntries.length}. Type: ${typeof batchEntries}`;\n        console.log(msg);\n        return [{ json: { status: msg, processed: false, itemsToProcess: [] } }];\n    }\n\n    console.log(`[${timeStamp()}] Parse Batch Control JSON: Successfully parsed ${batchEntries.length} entries. Preparing items for processing.`);\n    \n    return batchEntries.map(entry => ({\n        json: {\n            googleDriveFileId: entry.gdrivePdfId,\n            originalEntry: entry \n        }\n    }));\n\n} catch (error) {\n    const msg = `[${timeStamp()}] Parse Batch Control JSON: CRITICAL ERROR. Details: ${error.message}`;\n    console.error(msg, error.stack, JSON.stringify($json));\n    return [{ \n        json: { \n            isErrorCondition: true, \n            errorNode: \"Parse Batch Control JSON\", \n            errorMessage: error.message, \n            errorDetails: error.stack,\n            errorFullInput: $json\n        }\n    }];\n}"
       },
-      "id": "7e2367af-6712-4916-ad4c-d50f94372489",
-      "name": "Read Google Drive IDs Batch File",
+      "id": "read-gdrive-batch-file",
+      "name": "Parse Batch Control JSON & Prepare Items",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
       "position": [
-        -180,
-        460
+        800, // Adjusted X position
+        180
       ]
     },
     {
       "parameters": {
+        "resource": "file",
         "operation": "download",
         "fileId": "={{ $json.googleDriveFileId }}",
         "options": {}
@@ -228,215 +274,838 @@
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 1,
       "position": [
-        40,
-        460
+        1000, // Adjusted X position
+        180
       ],
-      "id": "9f51b809-19f4-4b63-aec7-1e7791b5fc16"
+      "id": "gdrive-download-pdf",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Drive Credentials Placeholder"
+        }
+      }
     },
     {
       "parameters": {
         "fileName": "={{ './shipping_slips/temp/' + $json.googleDriveFileId + '.pdf' }}",
-        "options": {}
+        "dataPropertyName": "data",
+        "options": {
+          "createDirectories": true
+        }
       },
       "name": "Save Temporary PDF Locally",
       "type": "n8n-nodes-base.writeBinaryFile",
       "typeVersion": 1,
       "position": [
-        260,
-        460
+        1200, // Adjusted X position
+        180
       ],
-      "id": "4bf320e8-b0b8-444c-af11-0b96891fb28b"
+      "id": "save-temp-pdf"
     },
     {
       "parameters": {
-        "functionCode": "const fs = require('fs');\nconst path = require('path');\nconst { PDFDocument } = require('pdf-lib');\n\n// items will be an array of objects, each from an iteration of \"Save Temporary PDF Locally\"\n// Each item should have a property (e.g., 'filePath' or 'fileName') that gives the path to the temp PDF.\n// Let's assume the WriteBinaryFile node outputs the path in a property 'filePath'.\n// If it's different (e.g. 'fileName' if it's just the name, or might be nested), this needs adjustment.\n// The input to WriteBinaryFile ('Save Temporary PDF Locally') was $json.googleDriveFileId.\n// So, this function node will receive an array like:\n// [ { json: { googleDriveFileId: 'id1', ...other data from loop... } }, { json: { googleDriveFileId: 'id2', ... } } ]\n// The temporary file paths were './shipping_slips/temp/' + googleDriveFileId + '.pdf'\n\nasync function processAndCombine() {\n  const compiledPdfDir = './shipping_slips';\n  const tempDir = path.join(compiledPdfDir, 'temp');\n  const today = items[0]?.json?.today || new Date().toISOString().split('T')[0]; // Get 'today' from first item or generate\n  \n  const compiledPdfPath = path.join(compiledPdfDir, `compiled_slips_gdrive_${today}.pdf`);\n\n  const sourcePdfPaths = [];\n  for (const item of items) {\n    const tempPdfPath = path.join(tempDir, `${item.json.googleDriveFileId}.pdf`);\n    if (fs.existsSync(tempPdfPath)) {\n      sourcePdfPaths.push(tempPdfPath);\n    } else {\n      console.warn(`Temporary PDF not found: ${tempPdfPath}`);\n    }\n  }\n\n  if (sourcePdfPaths.length === 0) {\n    return [{ json: { status: 'No temporary PDFs found to combine.', processed: false, sourcePdfPaths } }];\n  }\n\n  try {\n    const combinedPdf = await PDFDocument.create();\n    for (const pdfPath of sourcePdfPaths) {\n      try {\n        const pdfBytes = fs.readFileSync(pdfPath);\n        const pdfDoc = await PDFDocument.load(pdfBytes);\n        const copiedPages = await combinedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());\n        copiedPages.forEach(page => combinedPdf.addPage(page));\n      } catch (loadErr) {\n        console.error(`Error processing temporary PDF ${pdfPath}:`, loadErr);\n      }\n    }\n\n    if (combinedPdf.getPageCount() === 0) {\n      return [{ json: { status: 'Failed to combine any pages from temporary PDFs.', processed: false, sourcePdfPaths } }];\n    }\n\n    const combinedPdfBytes = await combinedPdf.save();\n    fs.writeFileSync(compiledPdfPath, combinedPdfBytes);\n    \n    // Optional: Cleanup temporary files\n    for (const pdfPath of sourcePdfPaths) {\n      try {\n        fs.unlinkSync(pdfPath);\n      } catch (unlinkErr) {\n        console.warn(`Failed to delete temporary file ${pdfPath}:`, unlinkErr);\n      }\n    }\n    // Optional: Cleanup batch file (batchFilePath was passed in each item from 'Read Google Drive IDs Batch File')\n    const batchFilePath = items[0]?.json?.batchFilePath;\n    if (batchFilePath && fs.existsSync(batchFilePath)) {\n      try {\n         // fs.unlinkSync(batchFilePath); // Uncomment to delete batch file\n         console.log(`Batch file ${batchFilePath} processed. Ready for cleanup.`);\n      } catch (e) { console.warn(`Could not cleanup batch file ${batchFilePath}`)}\n    }\n\n    return [{ json: { \n      status: 'Batch PDF from Google Drive files successfully created.', \n      outputPath: compiledPdfPath, \n      processedPdfCount: sourcePdfPaths.length,\n      processed: true \n    }}];\n\n  } catch (error) {\n    console.error('Error during PDF combination from temporary files:', error);\n    return [{ json: { status: 'Error combining PDFs.', error: error.message, errorStack: error.stack, processed: false } }];\n  }\n}\n\nreturn await processAndCombine();\n"
+        "functionCode": "const fs = require('fs');\nconst path = require('path');\nconst { PDFDocument } = require('pdf-lib');\n\nasync function processAndCombine() {\n  const timeStamp = () => new Date().toISOString();\n  console.log(`[${timeStamp()}] Combine Downloaded PDFs: Start processing. Received ${items.length} items.`);\n\n  const compiledPdfDir = './shipping_slips'; \n  const tempDir = path.join(compiledPdfDir, 'temp'); \n  \n  const todayForFilename = new Date().toISOString().split('T')[0];\n  const compiledPdfPath = path.join(compiledPdfDir, `compiled_slips_gdrive_${todayForFilename}.pdf`);\n\n  if (!fs.existsSync(compiledPdfDir)) {\n    fs.mkdirSync(compiledPdfDir, { recursive: true });\n  }\n  if (!fs.existsSync(tempDir)) {\n    fs.mkdirSync(tempDir, { recursive: true });\n  }\n  \n  const sourcePdfPaths = [];\n  for (let i = 0; i < items.length; i++) {\n    const item = items[i];\n    const tempPdfPath = item.json.fileName; \n\n    if (!tempPdfPath) {\n        console.warn(`[${timeStamp()}] Combine Downloaded PDFs: Item ${i+1}/${items.length} has no fileName property.`);\n        continue;\n    }\n\n    if (fs.existsSync(tempPdfPath)) {\n      sourcePdfPaths.push(tempPdfPath);\n      console.log(`[${timeStamp()}] Combine Downloaded PDFs: Added ${tempPdfPath} to combine list.`);\n    } else {\n      console.warn(`[${timeStamp()}] Combine Downloaded PDFs: Temporary PDF not found for item ${i+1}/${items.length}: ${tempPdfPath}. Original GDrive ID was ${item.json.googleDriveFileId}`);\n    }\n  }\n\n  if (sourcePdfPaths.length === 0) {\n    console.log(`[${timeStamp()}] Combine Downloaded PDFs: No temporary PDFs found to combine.`);\n    return [{ json: { status: 'No temporary PDFs found to combine.', processed: false, sourcePdfPaths } }];\n  }\n  console.log(`[${timeStamp()}] Combine Downloaded PDFs: Attempting to combine ${sourcePdfPaths.length} PDFs.`);\n\n  try {\n    const combinedPdf = await PDFDocument.create();\n    for (let i = 0; i < sourcePdfPaths.length; i++) {\n      const pdfPath = sourcePdfPaths[i];\n      console.log(`[${timeStamp()}] Combine Downloaded PDFs: Processing PDF ${i+1}/${sourcePdfPaths.length}: ${pdfPath}`);\n      try {\n        const pdfBytes = fs.readFileSync(pdfPath);\n        const pdfDoc = await PDFDocument.load(pdfBytes);\n        const copiedPages = await combinedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());\n        copiedPages.forEach(page => combinedPdf.addPage(page));\n        console.log(`[${timeStamp()}] Combine Downloaded PDFs: Successfully added pages from ${pdfPath}`);\n      } catch (loadErr) {\n        console.error(`[${timeStamp()}] Combine Downloaded PDFs: Error processing temporary PDF ${pdfPath}:`, loadErr.message, loadErr.stack);\n      }\n    }\n\n    if (combinedPdf.getPageCount() === 0) {\n      console.error(`[${timeStamp()}] Combine Downloaded PDFs: Failed to combine any pages from temporary PDFs.`);\n      return [{ json: { status: 'Failed to combine any pages from temporary PDFs.', processed: false, sourcePdfPaths } }];\n    }\n\n    const combinedPdfBytes = await combinedPdf.save();\n    fs.writeFileSync(compiledPdfPath, combinedPdfBytes);\n    console.log(`[${timeStamp()}] Combine Downloaded PDFs: Combined PDF successfully created at ${compiledPdfPath} with ${combinedPdf.getPageCount()} pages.`);\n    \n    console.log(`[${timeStamp()}] Combine Downloaded PDFs: Cleaning up ${sourcePdfPaths.length} temporary PDF files...`);\n    for (const pdfPath of sourcePdfPaths) {\n      try {\n        fs.unlinkSync(pdfPath);\n        console.log(`[${timeStamp()}] Combine Downloaded PDFs: Deleted temporary file ${pdfPath}`);\n      } catch (unlinkErr) {\n        console.warn(`[${timeStamp()}] Combine Downloaded PDFs: Failed to delete temporary file ${pdfPath}:`, unlinkErr.message);\n      }\n    }\n    \n    return [{ json: { \n      status: `Batch PDF from Google Drive files successfully created. ${combinedPdf.getPageCount()} pages.`, \n      outputPath: compiledPdfPath, \n      processedPdfCount: sourcePdfPaths.length,\n      sourcePdfFiles: sourcePdfPaths, \n      processed: true \n    }}];\n\n  } catch (error) {\n    console.error(`[${timeStamp()}] Combine Downloaded PDFs: CRITICAL ERROR during PDF combination:`, error.message, error.stack);\n    return [{ \n        json: { \n            isErrorCondition: true, \n            errorNode: \"Combine Downloaded PDFs\", \n            errorMessage: error.message, \n            errorDetails: error.stack,\n            errorFullInput: items // items is the full array input to this node\n        }\n    }];\n  }\n}\n\nreturn await processAndCombine();\n"
       },
-      "id": "d9403cb0-779e-44d1-b0ac-ba78cb249f15",
+      "id": "combine-downloaded-pdfs",
       "name": "Combine Downloaded PDFs",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
       "position": [
-        480,
-        460
+        1400, // Adjusted X position
+        180
       ]
     },
     {
       "parameters": {
-        "options": {}
+        "resource": "file",
+        "operation": "upload",
+        "source": "filePath",
+        "filePath": "={{ $json.outputPath }}",
+        "destinationType": "folderPath",
+        "destinationPath": "=ShippingSlips_Batches/{{new Date().toISOString().split('T')[0]}}/CombinedBatches/",
+        "fileName": "={{ $json.outputPath.split('/').pop() }}",
+        "options": {
+          "createMissingFolders": true
+        }
       },
       "name": "Upload Combined Batch PDF to Google Drive",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 1,
       "position": [
-        700,
-        460
+        1800, // Adjusted X position
+        180
       ],
-      "id": "8a93075b-d255-4013-97d8-0d0f7ebab17a"
+      "id": "gdrive-upload-combined-pdf",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Drive Credentials Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "file",
+        "operation": "list",
+        "destinationType": "folderPath",
+        "destinationPath": "=ShippingSlips_Batches/{{new Date().toISOString().split('T')[0]}}/BatchControl/",
+        "options": {
+          "fileName": "=batch_control_{{new Date().toISOString().split('T')[0]}}.json",
+          "limit": 1,
+          "recursive": false
+        }
+      },
+      "name": "List Existing Batch JSON",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [
+        600,
+        0
+      ],
+      "id": "gdrive-list-batch-json",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Drive Credentials Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [],
+          "boolean": [
+            {
+              "value1": "={{ $items('List Existing Batch JSON').length > 0 }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-batch-json-exists",
+      "name": "If Batch JSON Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        800,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "file",
+        "operation": "download",
+        "fileId": "={{ $items('List Existing Batch JSON')[0].json.id }}",
+        "options": {
+          "responseFormat": "file"
+        }
+      },
+      "name": "Download Batch JSON",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        -160
+      ],
+      "id": "gdrive-download-batch-json",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Drive Credentials Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "mergeByIndex",
+        "output": "dataAndAppend",
+        "input1": "={{ $items('Upload PDF to Google Drive') }}",
+        "input2": "={{ $items('Download Batch JSON').length > 0 ? $items('Download Batch JSON') : [{json: { batchFileData: null }}] }}"
+      },
+      "id": "merge-batch-download",
+      "name": "Merge Batch Download",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "file",
+        "operation": "upload",
+        "binaryPropertyName": "={{ $json.batchJsonToUpload }}",
+        "destinationType": "folderPath",
+        "destinationPath": "={{ $json.batchControlGdriveFolderPath }}",
+        "fileName": "={{ $json.batchControlFileName }}",
+        "options": {
+          "createMissingFolders": true,
+          "mimeType": "application/json"
+        }
+      },
+      "name": "Upload Batch Control JSON",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        0
+      ],
+      "id": "gdrive-upload-batch-json",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Drive Credentials Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "mode": "cron",
+          "cronTime": "0 2 * * *"
+        }
+      },
+      "id": "cleanup-schedule-trigger",
+      "name": "Daily Cleanup Trigger (2 AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -400,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "file",
+        "operation": "list",
+        "destinationType": "folderPath",
+        "destinationPath": "ShippingSlips_Batches/",
+        "options": {
+          "fieldsToInclude": "id,name,mimeType,createdTime,modifiedTime",
+          "filter": "mimeType = 'application/vnd.google-apps.folder'"
+        }
+      },
+      "name": "List Dated Batch Folders",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        600
+      ],
+      "id": "cleanup-list-dated-folders",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Drive Credentials Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "cleanup-loop-dated-folders",
+      "name": "Loop Through Each Dated Folder",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [
+        0,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const timeStamp = () => new Date().toISOString();\nconst folderData = $json; // Data of the current folder from the loop\nconst folderName = folderData.name;\nconst folderCreatedTime = folderData.createdTime; // Assuming GDrive list provides this\n\nconsole.log(`[${timeStamp()}] [Cleanup] Checking folder: ${folderName} (ID: ${folderData.id}, Created: ${folderCreatedTime})`);\n\nconst output = { ...folderData, isOldEnoughForSlipCleanup: false, isOldEnoughForBatchControlCleanup: false, isOldEnoughForFullFolderArchival: false };\n\n// Validate folder name format YYYY-MM-DD\nif (!/^\\d{4}-\\d{2}-\\d{2}$/.test(folderName)) {\n    console.warn(`[${timeStamp()}] [Cleanup] Folder ${folderName} does not match YYYY-MM-DD format. Skipping.`);\n    return { json: { ...output, skipProcessing: true, reason: 'Invalid folder name format' } };\n}\n\nconst folderDate = new Date(folderName); // Treats YYYY-MM-DD as UTC midnight\nif (isNaN(folderDate.getTime())) {\n    console.warn(`[${timeStamp()}] [Cleanup] Could not parse date from folder name ${folderName}. Skipping.`);\n    return { json: { ...output, skipProcessing: true, reason: 'Invalid date in folder name' } };\n}\n\nconst now = new Date();\n\nconst sevenDaysAgo = new Date(now);\nsevenDaysAgo.setDate(now.getDate() - 7);\n\nconst thirtyDaysAgo = new Date(now);\nthirtyDaysAgo.setDate(now.getDate() - 30);\n\nconst ninetyDaysAgo = new Date(now); // For folder archival example\nninetyDaysAgo.setDate(now.getDate() - 90);\n\noutput.isOldEnoughForSlipCleanup = folderDate < sevenDaysAgo;\noutput.isOldEnoughForBatchControlCleanup = folderDate < thirtyDaysAgo;\noutput.isOldEnoughForFullFolderArchival = folderDate < ninetyDaysAgo;\n\nconsole.log(`[${timeStamp()}] [Cleanup] Folder ${folderName}: Slips old enough? ${output.isOldEnoughForSlipCleanup}. Batch control old enough? ${output.isOldEnoughForBatchControlCleanup}. Archive old enough? ${output.isOldEnoughForFullFolderArchival}`);\n\nreturn { json: output };"
+      },
+      "id": "cleanup-check-folder-retention",
+      "name": "Check Folder Retention Policy",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        200,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isOldEnoughForSlipCleanup }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "cleanup-if-slips-old",
+      "name": "If Slips > 7 Days Old?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        400,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "file",
+        "operation": "list",
+        "destinationType": "folderPath",
+        "destinationPath": "={{ 'ShippingSlips_Batches/' + $json.name + '/IndividualSlips/' }}",
+        "options": {
+          "fieldsToInclude": "id,name",
+          "limit": 200
+        }
+      },
+      "id": "cleanup-list-old-slips",
+      "name": "List Old Individual Slips",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [
+        600,
+        440
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Drive Credentials Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "cleanup-loop-individual-slips",
+      "name": "Loop Through Old Slips",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [
+        800,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "file",
+        "operation": "delete",
+        "fileId": "={{ $json.id }}"
+      },
+      "id": "cleanup-delete-slip-file",
+      "name": "Delete Slip File",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        440
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Drive Credentials Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isOldEnoughForBatchControlCleanup }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "cleanup-if-batch-control-old",
+      "name": "If Batch Control > 30 Days?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        400,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "file",
+        "operation": "list",
+        "destinationType": "folderPath",
+        "destinationPath": "={{ 'ShippingSlips_Batches/' + $json.name + '/BatchControl/' }}",
+        "options": {
+          "fileName": "={{ 'batch_control_' + $json.name + '.json' }}",
+          "fieldsToInclude": "id,name",
+          "limit": 1
+        }
+      },
+      "id": "cleanup-list-old-batch-controls",
+      "name": "List Old Batch Control JSON",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [
+        600,
+        600
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Drive Credentials Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "cleanup-loop-batch-controls",
+      "name": "Loop Through Old Batch Controls",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [
+        800,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "file",
+        "operation": "delete",
+        "fileId": "={{ $json.id }}"
+      },
+      "id": "cleanup-delete-batch-control-file",
+      "name": "Delete Batch Control File",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        600
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Drive Credentials Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isOldEnoughForFullFolderArchival }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "cleanup-if-folder-for-archival",
+      "name": "If Dated Folder > 90 Days (Archive)?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        400,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "file",
+        "operation": "move",
+        "fileId": "={{ $json.id }}",
+        "destinationType": "folderId",
+        "destinationFolderId": "YOUR_ARCHIVE_FOLDER_ID_PLACEHOLDER"
+      },
+      "id": "cleanup-archive-dated-folder",
+      "name": "Archive Dated Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [
+        600,
+        680
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Drive Credentials Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "cleanup-noop-after-ifs",
+      "name": "Cleanup NoOp/Merge Point",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "smtp",
+        "to": "your-monitoring-email@example.com",
+        "from": "n8n-alerts@example.com",
+        "subject": "={{ '[WORKFLOW ERROR] Shipping Slip: ' + ($json.errorNode || 'Unknown Node') }}",
+        "html": "=<h3>Workflow Error Alert</h3>\n<p><strong>Workflow:</strong> WooCommerce Order to Shipping Slip Generator</p>\n<p><strong>Node:</strong> {{ $json.errorNode || 'N/A' }}</p>\n<p><strong>Timestamp:</strong> {{ new Date().toISOString() }}</p>\n<p><strong>Order ID:</strong> {{ $json.errorInputOrderId || 'N/A' }}</p>\n<p><strong>Order Number:</strong> {{ $json.errorInputOrderNumber || 'N/A' }}</p>\n<p><strong>Error Message:</strong><br>{{ $json.errorMessage || 'No specific message.' }}</p>\n<p><strong>Details:</strong><br><pre>{{ JSON.stringify($json.errorDetails || 'No details.', null, 2) }}</pre></p>\n<p><strong>Full Erroring Input/Item (if available):</strong><br><pre>{{ JSON.stringify($json.errorFullInput || $json, null, 2) }}</pre></p>",
+        "options": {}
+      },
+      "id": "send-error-alert-email",
+      "name": "Send Error Alert Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        800,
+        300
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "YOUR_SMTP_CREDENTIAL_ID",
+          "name": "SMTP Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isErrorCondition === true }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-error-prepare-data",
+      "name": "If Error in Prepare Data?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        200,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isErrorCondition === true }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-error-prep-batch-ctrl",
+      "name": "If Error in Prep Batch Ctrl?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $items[0].json.isErrorCondition === true }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-error-parse-batch-json",
+      "name": "If Error in Parse Batch JSON?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        800, // Before Parse node
+        260  // Y-pos for error path
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isErrorCondition === true }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-error-combine-pdfs",
+      "name": "If Error Combining PDFs?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1400, // Before Combine node
+        260   // Y-pos for error path
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "file",
+        "operation": "list",
+        "destinationType": "folderPath",
+        "destinationPath": "=ShippingSlips_Batches/{{new Date().toISOString().split('T')[0]}}/BatchControl/",
+        "options": {
+          "fileName": "=batch_control_{{new Date().toISOString().split('T')[0]}}.json",
+          "limit": 1
+        }
+      },
+      "name": "List Today's Batch Control for Processing",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [
+        400, // X position for scheduled flow start
+        100
+      ],
+      "id": "gdrive-list-batch-control-for-processing",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Drive Credentials Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $items(-1).length > 0 }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-batch-control-for-processing-exists",
+      "name": "If Batch Control for Today Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        600, // X position
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "file",
+        "operation": "download",
+        "fileId": "={{ $items(-2)[0].json.id }}",
+        "options": {
+          "responseFormat": "file"
+        }
+      },
+      "name": "Download Today's Batch Control for Processing",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [
+        600, // X position, true path
+        180  // Y position
+      ],
+      "id": "gdrive-download-batch-control-for-processing",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Drive Credentials Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "no-op-batch-file-not-found",
+      "name": "No Batch File for Today",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        800, // X position, false path
+        100  // Y position
+      ]
     }
   ],
-  "pinData": {},
   "connections": {
     "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Check if Status is Processing",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [ [ { "node": "workflow-config-node", "type": "main", "index": 0 } ] ]
+    },
+    "workflow-config-node": {
+      "main": [ [ { "node": "Check if Status is Processing", "type": "main", "index": 0 } ] ]
     },
     "Check if Status is Processing": {
       "main": [
-        [
-          {
-            "node": "Get Order Details",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "No Operation",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [ { "node": "Get Order Details", "type": "main", "index": 0 } ],
+        [ { "node": "No Operation", "type": "main", "index": 0 } ]
       ]
     },
     "Get Order Details": {
-      "main": [
-        [
-          {
-            "node": "Prepare Shipping Data",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [ [ { "node": "Prepare Shipping Data", "type": "main", "index": 0 } ] ]
     },
-    "Prepare Shipping Data": {
-      "main": [
-        [
-          {
-            "node": "HTML to PDF Converter",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Prepare Shipping Data": { <!-- This node now leads to an IF -->
+      "main": [ [ { "node": "if-error-prepare-data", "type": "main", "index": 0 } ] ]
     },
-    "Schedule Trigger for Batch Processing": {
-      "main": [
-        [
-          {
-            "node": "Read Google Drive IDs Batch File",
-            "type": "main",
-            "index": 0
-          }
+    "if-error-prepare-data": {
+        "main": [ // True output (error)
+            [ { "node": "send-error-alert-email", "type": "main", "index": 0 } ],
+            // False output (no error)
+            [ { "node": "HTML to PDF Converter", "type": "main", "index": 0 } ]
         ]
-      ]
-    },
-    "Read Google Drive IDs Batch File": {
-      "main": [
-        [
-          {
-            "node": "Download PDF from Google Drive",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Download PDF from Google Drive": {
-      "main": [
-        [
-          {
-            "node": "Save Temporary PDF Locally",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Save Temporary PDF Locally": {
-      "main": [
-        [
-          {
-            "node": "Combine Downloaded PDFs",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Combine Downloaded PDFs": {
-      "main": [
-        [
-          {
-            "node": "Upload Combined Batch PDF to Google Drive",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
     },
     "HTML to PDF Converter": {
-      "main": [
-        [
-          {
-            "node": "Upload PDF to Google Drive",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [ [ { "node": "Upload PDF to Google Drive", "type": "main", "index": 0 } ] ]
     },
     "Upload PDF to Google Drive": {
+      "main": [ [ { "node": "List Existing Batch JSON", "type": "main", "index": 0 } ] ]
+    },
+    "List Existing Batch JSON": {
+      "main": [ [ { "node": "If Batch JSON Exists?", "type": "main", "index": 0 } ] ]
+    },
+    "If Batch JSON Exists?": {
       "main": [
-        [
-          {
-            "node": "Add Google Drive ID to Batch File",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [ { "node": "Download Batch JSON", "type": "main", "index": 0 } ],
+        [ { "node": "Merge Batch Download", "type": "main", "index": 0 } ]
       ]
     },
-    "Add Google Drive ID to Batch File": {
-      "main": [
-        [
-          {
-            "node": "Update Order Metadata",
-            "type": "main",
-            "index": 0
-          }
+    "Download Batch JSON": {
+      "main": [ [ { "node": "Merge Batch Download", "type": "main", "index": 0 } ] ]
+    },
+    "Merge Batch Download": {
+      "main": [ [ { "node": "Prepare Batch Control Data", "type": "main", "index": 0 } ] ]
+    },
+    "Prepare Batch Control Data": { <!-- This node now leads to an IF -->
+      "main": [ [ { "node": "if-error-prep-batch-ctrl", "type": "main", "index": 0 } ] ]
+    },
+    "if-error-prep-batch-ctrl": {
+        "main": [ // True output (error)
+            [ { "node": "send-error-alert-email", "type": "main", "index": 0 } ],
+            // False output (no error)
+            [ { "node": "Upload Batch Control JSON", "type": "main", "index": 0 } ]
         ]
+    },
+    "Upload Batch Control JSON": {
+      "main": [ [ { "node": "Update Order Metadata", "type": "main", "index": 0 } ] ]
+    },
+    "Update Order Metadata": { /* No output connection shown, end of this path */ },
+
+    "Schedule Trigger for Batch Processing": { <!-- Corrected start of scheduled flow -->
+      "main": [ [ { "node": "gdrive-list-batch-control-for-processing", "type": "main", "index": 0 } ] ]
+    },
+    "gdrive-list-batch-control-for-processing": {
+      "main": [ [ { "node": "if-batch-control-for-processing-exists", "type": "main", "index": 0 } ] ]
+    },
+    "if-batch-control-for-processing-exists": {
+      "main": [
+        [ { "node": "gdrive-download-batch-control-for-processing", "type": "main", "index": 0 } ], // True
+        [ { "node": "no-op-batch-file-not-found", "type": "main", "index": 0 } ] // False
       ]
-    }
+    },
+    "gdrive-download-batch-control-for-processing": {
+      "main": [ [ { "node": "read-gdrive-batch-file", "type": "main", "index": 0 } ] ]
+    },
+    "read-gdrive-batch-file": { <!-- This node now leads to an IF -->
+      "main": [ [ { "node": "if-error-parse-batch-json", "type": "main", "index": 0 } ] ]
+    },
+    "if-error-parse-batch-json": {
+        "main": [ // True output (error)
+            [ { "node": "send-error-alert-email", "type": "main", "index": 0 } ],
+            // False output (no error / items to process)
+            [ { "node": "Download PDF from Google Drive", "type": "main", "index": 0 } ]
+        ]
+    },
+    "Download PDF from Google Drive": {
+      "main": [ [ { "node": "Save Temporary PDF Locally", "type": "main", "index": 0 } ] ]
+    },
+    "Save Temporary PDF Locally": {
+      "main": [ [ { "node": "Combine Downloaded PDFs", "type": "main", "index": 0 } ] ]
+    },
+    "Combine Downloaded PDFs": { <!-- This node now leads to an IF -->
+      "main": [ [ { "node": "if-error-combine-pdfs", "type": "main", "index": 0 } ] ]
+    },
+    "if-error-combine-pdfs": {
+        "main": [ // True output (error)
+            [ { "node": "send-error-alert-email", "type": "main", "index": 0 } ],
+            // False output (no error)
+            [ { "node": "Upload Combined Batch PDF to Google Drive", "type": "main", "index": 0 } ]
+        ]
+    },
+    "Upload Combined Batch PDF to Google Drive": { /* No output connection shown, end of this path */ },
+    "no-op-batch-file-not-found": { /* End of this path */ },
+
+    "cleanup-schedule-trigger": { "main": [ [ { "node": "cleanup-list-dated-folders", "type": "main", "index": 0 } ] ] },
+    "cleanup-list-dated-folders": { "main": [ [ { "node": "cleanup-loop-dated-folders", "type": "main", "index": 0 } ] ] },
+    "cleanup-loop-dated-folders": { "main": [ [ { "node": "cleanup-check-folder-retention", "type": "main", "index": 0 } ] ] },
+    "cleanup-check-folder-retention": {
+      "main": [
+        [ { "node": "cleanup-if-slips-old", "type": "main", "index": 0 } ],
+        [ { "node": "cleanup-if-batch-control-old", "type": "main", "index": 0 } ],
+        [ { "node": "cleanup-if-folder-for-archival", "type": "main", "index": 0 } ]
+      ]
+    },
+    "cleanup-if-slips-old": {
+      "main": [
+        [ { "node": "cleanup-list-old-slips", "type": "main", "index": 0 } ],
+        [ { "node": "cleanup-noop-after-ifs", "type": "main", "index": 0 } ]
+      ]
+    },
+    "cleanup-list-old-slips": { "main": [ [ { "node": "cleanup-loop-individual-slips", "type": "main", "index": 0 } ] ] },
+    "cleanup-loop-individual-slips": { "main": [ [ { "node": "cleanup-delete-slip-file", "type": "main", "index": 0 } ] ] },
+    "cleanup-delete-slip-file": { "main": [ [ { "node": "cleanup-noop-after-ifs", "type": "main", "index": 0 } ] ] },
+    "cleanup-if-batch-control-old": {
+      "main": [
+        [ { "node": "cleanup-list-old-batch-controls", "type": "main", "index": 0 } ],
+        [ { "node": "cleanup-noop-after-ifs", "type": "main", "index": 0 } ]
+      ]
+    },
+    "cleanup-list-old-batch-controls": { "main": [ [ { "node": "cleanup-loop-batch-controls", "type": "main", "index": 0 } ] ] },
+    "cleanup-loop-batch-controls": { "main": [ [ { "node": "cleanup-delete-batch-control-file", "type": "main", "index": 0 } ] ] },
+    "cleanup-delete-batch-control-file": { "main": [ [ { "node": "cleanup-noop-after-ifs", "type": "main", "index": 0 } ] ] },
+    "cleanup-if-folder-for-archival": {
+      "main": [
+        [ { "node": "cleanup-archive-dated-folder", "type": "main", "index": 0 } ],
+        [ { "node": "cleanup-noop-after-ifs", "type": "main", "index": 0 } ]
+      ]
+    },
+    "cleanup-archive-dated-folder": { "main": [ [ { "node": "cleanup-noop-after-ifs", "type": "main", "index": 0 } ] ] },
+    "cleanup-noop-after-ifs": { /* End of loop iteration path */ }
   },
   "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "e7f93e4d-40a6-460a-9004-1b799655c771",
+  "versionId": "9ef36550-9a49-46e1-8904-ac830a52f4b6",
   "meta": {
     "instanceId": "c53ecb28f99c03e7dbc63fc29f3e8196e81e00736c6bd6560a4787342ab9857f"
   },
-  "id": "nciRynxOh7U03Yyh",
+  "id": "2diSOMFwLaDWAbwi",
   "tags": [
-    {
-      "createdAt": "2025-05-05T11:20:28.191Z",
-      "updatedAt": "2025-05-05T11:20:28.191Z",
-      "id": "1w0JXJvToXsyNaPe",
-      "name": "Mojoy"
-    },
     {
       "createdAt": "2025-05-05T12:44:10.783Z",
       "updatedAt": "2025-05-05T12:44:10.783Z",
       "id": "8RQJptTv7BS9sUFE",
       "name": "woocommerce"
+    },
+    {
+      "createdAt": "2025-05-05T11:20:28.191Z",
+      "updatedAt": "2025-05-05T11:20:28.191Z",
+      "id": "1w0JXJvToXsyNaPe",
+      "name": "Mojoy"
     }
   ]
 }
